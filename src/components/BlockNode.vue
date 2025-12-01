@@ -329,17 +329,17 @@ function handleDelete(event: MouseEvent) {
   box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
 }
 
-/* Handle de entrada (vermelho no topo) */
+/* Handle de entrada (vermelho na esquerda) */
 .input-handle {
   background: #ef4444;
-  top: -7px;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 50%;
+  left: -7px;
+  transform: translateY(-50%);
 }
 
 .input-handle:hover {
   background: #dc2626;
-  transform: translateX(-50%) scale(1.5);
+  transform: translateY(-50%) scale(1.5);
   box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.3);
 }
 
@@ -352,15 +352,15 @@ function handleDelete(event: MouseEvent) {
   background: #059669;
 }
 
-/* Handle de saída principal (na base do bloco) */
+/* Handle de saída principal (na direita do bloco) */
 .main-output {
-  bottom: -7px;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 50%;
+  right: -7px;
+  transform: translateY(-50%);
 }
 
 .main-output:hover {
-  transform: translateX(-50%) scale(1.5);
+  transform: translateY(-50%) scale(1.5);
 }
 
 /* Handles de saída nas opções/condições */
