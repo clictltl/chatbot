@@ -46,7 +46,10 @@ const tempConnectionPath = ref<string>('');
 
 const canvasStyle = computed(() => ({
   transform: `translate(${panOffset.value.x}px, ${panOffset.value.y}px) scale(${props.zoom / 100})`,
-  transformOrigin: '0 0'
+  transformOrigin: '0 0',
+  '--pan-x': `${panOffset.value.x}px`,
+  '--pan-y': `${panOffset.value.y}px`,
+  '--zoom': `${props.zoom / 100}`
 }));
 
 // Função auxiliar para obter a posição de um handle
@@ -86,17 +89,23 @@ function updateTempConnection() {
 
 // Mouse down no canvas
 function handleCanvasMouseDown(event: MouseEvent) {
+  // Cancela conexão em andamento
   if (connectingFrom.value) {
     connectingFrom.value = null;
     tempConnectionPath.value = '';
     return;
   }
 
-  if (event.button === 1 || (event.button === 0 && event.ctrlKey)) {
+  // Pan: botão do meio ou Espaço + botão esquerdo
+  if (event.button === 1 || (event.button === 0 && event.shiftKey)) {
     event.preventDefault();
     isPanning.value = true;
     panStart.value = { x: event.clientX, y: event.clientY };
-  } else if (event.target === canvasRef.value) {
+    return;
+  }
+
+  // Desseleciona ao clicar no canvas vazio
+  if (event.target === canvasRef.value) {
     emit('update:selectedBlockId', null);
   }
 }
@@ -330,6 +339,7 @@ onMounted(() => {
   <div
     ref="canvasRef"
     class="canvas"
+    :class="{ panning: isPanning }"
     @mousedown="handleCanvasMouseDown"
     @mousemove="handleCanvasMouseMove"
     @mouseup="handleCanvasMouseUp"
@@ -410,13 +420,6 @@ onMounted(() => {
       <strong>🔗 Conectando...</strong><br>
       Clique no handle vermelho (entrada) do bloco de destino
     </div>
-
-    <!-- Dica inicial -->
-    <div v-if="blocks.length === 1" class="empty-hint">
-      <div class="empty-icon">🚀</div>
-      <h3>Comece Aqui!</h3>
-      <p>Conecte novos blocos ao <strong>bloco inicial</strong> ou crie mais blocos usando "<strong>➕ Novo Bloco</strong>"</p>
-    </div>
   </div>
 </template>
 
@@ -426,16 +429,28 @@ onMounted(() => {
   height: 100%;
   position: relative;
   overflow: hidden;
+  background-color: #ffffff;
+  cursor: default;
+}
+
+.canvas::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background:
     linear-gradient(90deg, #f9fafb 1px, transparent 1px),
     linear-gradient(#f9fafb 1px, transparent 1px);
   background-size: 20px 20px;
-  background-position: 0 0;
-  cursor: grab;
+  transform: translate(var(--pan-x, 0px), var(--pan-y, 0px)) scale(var(--zoom, 1));
+  transform-origin: 0 0;
+  pointer-events: none;
 }
 
-.canvas:active {
-  cursor: grabbing;
+.canvas.panning {
+  cursor: grabbing !important;
 }
 
 .connections-svg {
@@ -504,36 +519,5 @@ onMounted(() => {
   50% {
     box-shadow: 0 4px 30px rgba(16, 185, 129, 0.6);
   }
-}
-
-.empty-hint {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  text-align: center;
-  color: #9ca3af;
-  user-select: none;
-  pointer-events: none;
-}
-
-.empty-icon {
-  font-size: 80px;
-  margin-bottom: 16px;
-  opacity: 0.5;
-}
-
-.empty-hint h3 {
-  margin: 0 0 8px 0;
-  font-size: 24px;
-  font-weight: 700;
-  color: #6b7280;
-}
-
-.empty-hint p {
-  margin: 0;
-  font-size: 14px;
-  line-height: 1.6;
-  max-width: 400px;
 }
 </style>
