@@ -44,6 +44,9 @@ const connectingFrom = ref<{ blockId: string; outputId?: string; element: HTMLEl
 const mousePosition = ref({ x: 0, y: 0 });
 const tempConnectionPath = ref<string>('');
 
+// Estado da seleção de conexão
+const selectedConnectionId = ref<string | null>(null);
+
 const canvasStyle = computed(() => ({
   transform: `translate(${panOffset.value.x}px, ${panOffset.value.y}px) scale(${props.zoom / 100})`,
   transformOrigin: '0 0',
@@ -107,6 +110,7 @@ function handleCanvasMouseDown(event: MouseEvent) {
   // Desseleciona ao clicar no canvas vazio
   if (event.target === canvasRef.value) {
     emit('update:selectedBlockId', null);
+    selectedConnectionId.value = null;
   }
 }
 
@@ -319,6 +323,64 @@ function getConnectionPathById(conn: Connection): string {
   return getConnectionPath(fromPos.x, fromPos.y, toPos.x, toPos.y);
 }
 
+// Seleciona uma conexão
+function handleConnectionClick(connectionId: string, event: MouseEvent) {
+  event.stopPropagation();
+  selectedConnectionId.value = connectionId;
+}
+
+// Deleta a conexão selecionada
+function deleteSelectedConnection() {
+  if (!selectedConnectionId.value) return;
+
+  const connection = props.connections.find(c => c.id === selectedConnectionId.value);
+  if (!connection) return;
+
+  // Remove a conexão da lista
+  const updatedConnections = props.connections.filter(c => c.id !== selectedConnectionId.value);
+  emit('update:connections', updatedConnections);
+
+  // Atualiza o nextBlockId no bloco de origem
+  const updatedBlocks = props.blocks.map(block => {
+    if (block.id !== connection.fromBlockId) return block;
+
+    // Se tem outputId, remove o nextBlockId da escolha ou condição específica
+    if (connection.fromOutputId && block.choices) {
+      return {
+        ...block,
+        choices: block.choices.map(c =>
+          c.id === connection.fromOutputId ? { ...c, nextBlockId: undefined } : c
+        )
+      };
+    }
+
+    if (connection.fromOutputId && block.conditions) {
+      return {
+        ...block,
+        conditions: block.conditions.map(c =>
+          c.id === connection.fromOutputId ? { ...c, nextBlockId: undefined } : c
+        )
+      };
+    }
+
+    // Caso contrário, remove o nextBlockId principal
+    return { ...block, nextBlockId: undefined };
+  });
+
+  emit('update:blocks', updatedBlocks);
+  selectedConnectionId.value = null;
+}
+
+// Listener para teclas Delete/Backspace
+function handleKeyDown(event: KeyboardEvent) {
+  if (event.key === 'Delete' || event.key === 'Backspace') {
+    if (selectedConnectionId.value) {
+      event.preventDefault();
+      deleteSelectedConnection();
+    }
+  }
+}
+
 // Força re-render quando blocos ou conexões mudam
 const renderKey = ref(0);
 
@@ -332,6 +394,7 @@ watch(() => [props.blocks, props.connections, props.zoom, panOffset.value], forc
 
 onMounted(() => {
   forceUpdate();
+  window.addEventListener('keydown', handleKeyDown);
 });
 </script>
 
@@ -379,11 +442,12 @@ onMounted(() => {
         v-for="conn in connections"
         :key="`${conn.id}-${renderKey}`"
         :d="getConnectionPathById(conn)"
-        stroke="#64748b"
-        stroke-width="2.5"
+        :stroke="selectedConnectionId === conn.id ? '#3b82f6' : '#64748b'"
+        :stroke-width="selectedConnectionId === conn.id ? 3.5 : 2.5"
         fill="none"
         marker-end="url(#arrowhead)"
         class="connection-path"
+        @click="handleConnectionClick(conn.id, $event)"
       />
 
       <!-- Conexão temporária durante o arraste -->
@@ -474,14 +538,15 @@ onMounted(() => {
 }
 
 .connection-path {
-  transition: stroke 0.2s;
+  transition: stroke 0.2s, stroke-width 0.2s;
   cursor: pointer;
   pointer-events: stroke;
+  stroke-linecap: round;
 }
 
 .connection-path:hover {
-  stroke: #3b82f6;
-  stroke-width: 3.5;
+  stroke: #3b82f6 !important;
+  stroke-width: 3.5 !important;
 }
 
 .connection-temp {
