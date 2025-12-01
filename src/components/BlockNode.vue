@@ -120,9 +120,8 @@ function handleDelete(event: MouseEvent) {
       </button>
     </div>
 
-    <!-- Handle de entrada (vermelho no topo) -->
+    <!-- Handle de entrada (vermelho no topo) - todos os blocos têm entrada -->
     <div
-      v-if="block.type !== 'end'"
       :data-handle-id="`${block.id}-input`"
       :data-block-id="block.id"
       class="handle input-handle"
@@ -164,7 +163,7 @@ function handleDelete(event: MouseEvent) {
       </div>
     </div>
 
-    <!-- Handle de saída principal (verde na base) -->
+    <!-- Handle de saída principal (verde na base) - não renderiza para 'end' -->
     <div
       v-if="block.type !== 'end' && block.type !== 'choiceQuestion' && block.type !== 'condition'"
       :data-handle-id="`${block.id}-output`"

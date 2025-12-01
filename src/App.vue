@@ -35,6 +35,7 @@ const selectedBlockId = ref<string | null>(null);
 const zoom = ref(100);
 const activeTab = ref<'properties' | 'variables' | 'preview'>('properties');
 const showNewBlockMenu = ref(false);
+const isPreviewFullscreen = ref(false);
 
 // Retorna o bloco atualmente selecionado
 const selectedBlock = computed(() => {
@@ -156,6 +157,14 @@ function viewJSON() {
     `);
   }
 }
+
+// Alterna o modo tela cheia do preview
+function togglePreviewFullscreen() {
+  isPreviewFullscreen.value = !isPreviewFullscreen.value;
+  if (isPreviewFullscreen.value) {
+    activeTab.value = 'preview';
+  }
+}
 </script>
 
 <template>
@@ -217,7 +226,7 @@ function viewJSON() {
     <!-- Área principal com canvas e painel lateral -->
     <div class="main-content">
       <!-- Canvas onde os blocos são desenhados e conectados -->
-      <div class="canvas-area">
+      <div class="canvas-area" v-show="!isPreviewFullscreen">
         <Canvas
           :blocks="blocks"
           :connections="connections"
@@ -230,7 +239,7 @@ function viewJSON() {
       </div>
 
       <!-- Painel lateral com propriedades, variáveis e preview -->
-      <aside class="side-panel">
+      <aside class="side-panel" :class="{ 'fullscreen': isPreviewFullscreen }">
         <div class="tabs">
           <button
             :class="['tab', { active: activeTab === 'properties' }]"
@@ -272,6 +281,8 @@ function viewJSON() {
             v-show="activeTab === 'preview'"
             :blocks="blocks"
             :variables="variables"
+            @update:variables="variables = $event"
+            @toggle-fullscreen="togglePreviewFullscreen"
           />
         </div>
       </aside>
@@ -445,6 +456,12 @@ body {
   border-left: 1px solid #e5e7eb;
   display: flex;
   flex-direction: column;
+  transition: all 0.3s ease;
+}
+
+.side-panel.fullscreen {
+  width: 100%;
+  border-left: none;
 }
 
 .tabs {

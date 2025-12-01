@@ -16,7 +16,7 @@ export function evaluateCondition(
   value: string | number,
   variables: Record<string, Variable>
 ): boolean {
-  const variable = variables[variableName];
+  const variable = variables[variableName.trim()];
   if (!variable || variable.value === null) return false;
 
   const varValue = variable.type === "number" ? Number(variable.value) : variable.value;
@@ -24,8 +24,16 @@ export function evaluateCondition(
 
   switch (operator) {
     case "==":
+      // Para strings, faz comparação case-insensitive
+      if (typeof varValue === 'string' && typeof compareValue === 'string') {
+        return varValue.trim().toLowerCase() === compareValue.trim().toLowerCase();
+      }
       return varValue === compareValue;
     case "!=":
+      // Para strings, faz comparação case-insensitive
+      if (typeof varValue === 'string' && typeof compareValue === 'string') {
+        return varValue.trim().toLowerCase() !== compareValue.trim().toLowerCase();
+      }
       return varValue !== compareValue;
     case ">":
       return varValue > compareValue;

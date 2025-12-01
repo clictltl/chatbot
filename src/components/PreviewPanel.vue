@@ -23,6 +23,13 @@ const props = defineProps<{
   variables: Record<string, Variable>;
 }>();
 
+const emit = defineEmits<{
+  'toggle-fullscreen': [];
+  'update:variables': [variables: Record<string, Variable>];
+}>();
+
+const isFullscreen = ref(false);
+
 // Estado da conversa
 const messages = ref<ChatMessage[]>([]);
 const currentBlockId = ref<string | null>(null);
@@ -32,9 +39,6 @@ const currentChoices = ref<{ id: string; label: string; nextBlockId?: string }[]
 const sessionVariables = ref<Record<string, Variable>>({});
 const chatEndRef = ref<HTMLDivElement | null>(null);
 const isRunning = ref(false);
-
-// NOVO: controla se o preview está em tela cheia
-const isFullscreen = ref(false);
 
 // Inicia uma nova sessão do chatbot
 function startChat() {
@@ -50,6 +54,9 @@ function startChat() {
   Object.keys(props.variables).forEach(key => {
     sessionVariables.value[key] = { ...props.variables[key] };
   });
+
+  // Sincroniza valores com as variáveis globais
+  syncVariablesToParent();
 
   // Busca o primeiro bloco para iniciar o fluxo
   if (props.blocks.length > 0) {
@@ -116,14 +123,12 @@ function processBlock(block: Block) {
 
       if (block.conditions) {
         for (const condition of block.conditions) {
-          if (
-            evaluateCondition(
-              condition.variableName,
-              condition.operator,
-              condition.value,
-              sessionVariables.value
-            )
-          ) {
+          if (evaluateCondition(
+            condition.variableName,
+            condition.operator,
+            condition.value,
+            sessionVariables.value
+          )) {
             nextBlockId = condition.nextBlockId;
             break;
           }
@@ -143,22 +148,16 @@ function processBlock(block: Block) {
       } else {
         // Nenhuma condição foi satisfeita
         console.warn('Nenhuma condição foi satisfeita no bloco condicional');
-        addErrorMessage('(Nenhuma condição foi satisfeita. Verifique o bloco condicional.)');
+        addErrorMessage('(Nenhuma condição satisfeita)');
         endChat();
       }
       break;
 
     case 'end':
-      // Bloco final
+      // Bloco final da conversa
       if (block.content) {
         addBotMessage(block.content);
       }
-      endChat();
-      break;
-
-    default:
-      console.warn(`Tipo de bloco não suportado: ${block.type}`);
-      addErrorMessage(`(Tipo de bloco não suportado: ${block.type})`);
       endChat();
       break;
   }
@@ -218,6 +217,8 @@ function handleSendMessage() {
           value: input
         };
       }
+      // Sincroniza com as variáveis globais para atualizar a aba de Variáveis
+      syncVariablesToParent();
     }
   }
 
@@ -277,52 +278,52 @@ function scrollToBottom() {
     }
   });
 }
+
+// Alterna o modo tela cheia
+function toggleFullscreen() {
+  isFullscreen.value = !isFullscreen.value;
+  emit('toggle-fullscreen');
+}
+
+// Sincroniza as variáveis da sessão com as variáveis globais (atualiza a aba Variáveis)
+function syncVariablesToParent() {
+  const updated = { ...props.variables };
+  Object.keys(sessionVariables.value).forEach(key => {
+    if (updated[key]) {
+      updated[key] = { ...sessionVariables.value[key] };
+    }
+  });
+  emit('update:variables', updated);
+}
 </script>
 
 <template>
-  <!-- quando isFullscreen = true, adiciona classe modificadora -->
-  <div :class="['preview-panel', { fullscreen: isFullscreen }]">
-    <!-- Botão de tela cheia / voltar -->
-    <button
-      class="btn-fullscreen"
-      @click="isFullscreen = !isFullscreen"
-      :title="isFullscreen ? 'Fechar tela cheia' : 'Ver em tela cheia'"
-    >
-      <span v-if="!isFullscreen">⤢</span>
-      <span v-else>✕</span>
+  <div class="preview-panel">
+    <!-- Botão de expandir/recolher -->
+    <button @click="toggleFullscreen" class="btn-fullscreen" :title="isFullscreen ? 'Sair da tela cheia' : 'Expandir tela cheia'">
+      <span v-if="isFullscreen">✕</span>
+      <span v-else>⛶</span>
     </button>
 
-    <!-- Tela inicial (antes de rodar o chatbot) -->
+    <!-- Tela inicial antes de começar o teste -->
     <div v-if="!isRunning && messages.length === 0" class="start-screen">
-      <div class="start-icon">🤖</div>
-      <h3>Preview do chatbot</h3>
-      <p>
-        Clique no botão abaixo para testar o fluxo do seu chatbot como se fosse um aluno
-        conversando com ele.
-      </p>
-      <button class="btn-start" @click="startChat">
-        ▶️ Iniciar conversa
-      </button>
+      <div class="start-icon">💬</div>
+      <h3>Teste seu Chatbot</h3>
+      <p>Clique em "Iniciar" para conversar com seu chatbot e testar o fluxo criado.</p>
+      <button @click="startChat" class="btn-start">▶️ Iniciar Teste</button>
     </div>
 
-    <!-- Chat em execução -->
+    <!-- Área do chat -->
     <div v-else class="chat-container">
-      <div class="chat-header">
-        <div class="avatar">🤖</div>
-        <div class="header-text">
-          <h3>Chatbot pedagógico</h3>
-          <p>Simulação de conversa com o fluxo criado no canvas</p>
-        </div>
-      </div>
-
-      <div class="chat-messages">
+      <div class="messages">
+        <!-- Mensagens do bot e do usuário -->
         <div
-          v-for="msg in messages"
-          :key="msg.id"
-          :class="['chat-message', msg.type === 'bot' ? 'bot' : 'user']"
+          v-for="message in messages"
+          :key="message.id"
+          :class="['message', message.type === 'bot' ? 'message-bot' : 'message-user']"
         >
-          <div class="bubble">
-            <p>{{ msg.content }}</p>
+          <div class="message-bubble">
+            {{ message.content }}
           </div>
         </div>
 
@@ -331,38 +332,32 @@ function scrollToBottom() {
           <button
             v-for="choice in currentChoices"
             :key="choice.id"
-            class="choice-button"
             @click="handleChoiceClick(choice)"
+            class="choice-button"
           >
             {{ choice.label }}
           </button>
         </div>
 
-        <div ref="chatEndRef"></div>
+        <!-- Elemento para scroll automático -->
+        <div ref="chatEndRef" />
       </div>
 
       <!-- Campo de entrada para perguntas abertas -->
-      <div class="chat-input" v-if="isWaitingForInput">
+      <div v-if="isWaitingForInput" class="input-area">
         <input
           v-model="userInput"
           type="text"
-          class="input"
           placeholder="Digite sua resposta..."
           @keyup.enter="handleSendMessage"
+          autofocus
         />
-        <button class="btn-send" @click="handleSendMessage">
-          Enviar
-        </button>
+        <button @click="handleSendMessage" class="btn-send">📤 Enviar</button>
       </div>
 
-      <!-- Mensagem de conversa encerrada + botão de reiniciar -->
-      <div v-if="!isRunning && messages.length > 0" class="chat-footer">
-        <p class="end-text">
-          🔚 A conversa chegou ao fim. Você pode ajustar o fluxo no canvas e testar novamente.
-        </p>
-        <button class="btn-restart" @click="startChat">
-          🔁 Reiniciar conversa
-        </button>
+      <!-- Botão para reiniciar o chat -->
+      <div v-if="!isWaitingForInput && currentChoices.length === 0 && !isRunning" class="restart-area">
+        <button @click="startChat" class="btn-restart">🔄 Recomeçar</button>
       </div>
     </div>
   </div>
@@ -374,50 +369,7 @@ function scrollToBottom() {
   display: flex;
   flex-direction: column;
   background: #f9fafb;
-  position: relative; /* para o botão absoluto funcionar */
-}
-
-/* MODO TELA CHEIA */
-.preview-panel.fullscreen {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  background: #f9fafb;
-  padding: 16px;
-}
-
-.preview-panel.fullscreen .chat-container {
-  max-width: 900px;
-  margin: 0 auto;
-}
-
-.preview-panel.fullscreen .start-screen {
-  max-width: 600px;
-  margin: 0 auto;
-}
-
-/* Tela inicial */
-.start-screen {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  gap: 16px;
-  padding: 32px;
-  text-align: center;
-}
-
-.start-icon {
-  font-size: 64px;
-  margin-bottom: 8px;
-}
-
-.start-screen h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-  color: #111827;
+  position: relative;
 }
 
 /* Botão de tela cheia */
@@ -451,20 +403,43 @@ function scrollToBottom() {
 }
 
 .btn-fullscreen:active {
-  transform: scale(0.96);
-  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.2);
+  transform: scale(0.95);
+}
+
+/* Tela inicial */
+.start-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 16px;
+  padding: 32px;
+  text-align: center;
+}
+
+.start-icon {
+  font-size: 64px;
+  margin-bottom: 8px;
+}
+
+.start-screen h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
 }
 
 .start-screen p {
-  margin: 0;
-  max-width: 420px;
+  color: #6b7280;
   font-size: 14px;
-  color: #4b5563;
+  margin: 0;
+  max-width: 280px;
+  line-height: 1.5;
 }
 
 .btn-start {
-  margin-top: 8px;
-  padding: 10px 20px;
+  padding: 12px 24px;
   background: #10b981;
   color: white;
   border: none;
@@ -482,149 +457,134 @@ function scrollToBottom() {
   box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
 }
 
-/* Container principal do chat */
+/* Container do chat */
 .chat-container {
   display: flex;
   flex-direction: column;
   height: 100%;
 }
 
-/* Cabeçalho do chat */
-.chat-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  border-bottom: 1px solid #e5e7eb;
-  background: #ffffff;
-}
-
-.avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 999px;
-  background: #eff6ff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-}
-
-.header-text h3 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #111827;
-}
-
-.header-text p {
-  margin: 0;
-  font-size: 12px;
-  color: #6b7280;
-}
-
-/* Área de mensagens */
-.chat-messages {
+/* Área de mensagens com scroll */
+.messages {
   flex: 1;
-  padding: 12px 16px;
   overflow-y: auto;
+  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
-/* Mensagens */
-.chat-message {
+.message {
   display: flex;
-  margin-bottom: 4px;
+  animation: slideIn 0.3s ease-out;
 }
 
-.chat-message.bot {
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.message-bot {
   justify-content: flex-start;
 }
 
-.chat-message.user {
+.message-user {
   justify-content: flex-end;
 }
 
-.bubble {
-  max-width: 80%;
-  padding: 10px 12px;
+/* Bolhas de mensagem */
+.message-bubble {
+  max-width: 75%;
+  padding: 10px 14px;
   border-radius: 12px;
-  font-size: 14px;
-  line-height: 1.4;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  font-size: 13px;
+  line-height: 1.5;
+  word-wrap: break-word;
 }
 
-.chat-message.bot .bubble {
-  background: #ffffff;
+.message-bot .message-bubble {
+  background: white;
+  color: #374151;
+  border: 1px solid #e5e7eb;
   border-bottom-left-radius: 4px;
-  color: #111827;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
-.chat-message.user .bubble {
-  background: #2563eb;
-  border-bottom-right-radius: 4px;
+.message-user .message-bubble {
+  background: #3b82f6;
   color: white;
+  border-bottom-right-radius: 4px;
+  box-shadow: 0 1px 3px rgba(59, 130, 246, 0.4);
 }
 
 /* Botões de múltipla escolha */
 .choices-container {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 8px;
-  margin-top: 4px;
+  margin-top: 8px;
+  animation: slideIn 0.3s ease-out;
 }
 
 .choice-button {
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid #d1d5db;
-  background: #ffffff;
+  padding: 10px 16px;
+  background: white;
+  color: #3b82f6;
+  border: 2px solid #3b82f6;
+  border-radius: 8px;
   font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.2s;
+  text-align: left;
 }
 
 .choice-button:hover {
-  background: #eff6ff;
-  border-color: #3b82f6;
-  color: #1d4ed8;
+  background: #3b82f6;
+  color: white;
+  transform: translateX(4px);
 }
 
-/* Campo de entrada */
-.chat-input {
+/* Área de input para perguntas abertas */
+.input-area {
   display: flex;
   gap: 8px;
-  padding: 10px 16px;
+  padding: 12px;
   border-top: 1px solid #e5e7eb;
-  background: #f9fafb;
+  background: white;
 }
 
-.input {
+.input-area input {
   flex: 1;
-  padding: 8px 10px;
-  border-radius: 999px;
+  padding: 10px 12px;
   border: 1px solid #d1d5db;
-  font-size: 14px;
-  outline: none;
+  border-radius: 8px;
+  font-size: 13px;
+  transition: all 0.2s;
 }
 
-.input:focus {
+.input-area input:focus {
+  outline: none;
   border-color: #3b82f6;
-  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .btn-send {
-  padding: 8px 14px;
-  border-radius: 999px;
-  border: none;
+  padding: 10px 20px;
   background: #3b82f6;
   color: white;
-  font-size: 14px;
-  font-weight: 500;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, transform 0.1s;
+  transition: all 0.2s;
 }
 
 .btn-send:hover {
@@ -632,25 +592,16 @@ function scrollToBottom() {
   transform: translateY(-1px);
 }
 
-/* Rodapé quando a conversa acaba */
-.chat-footer {
-  padding: 10px 16px 14px;
+/* Área de reinício */
+.restart-area {
+  padding: 12px;
   border-top: 1px solid #e5e7eb;
-  background: #f9fafb;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.end-text {
-  margin: 0;
-  font-size: 13px;
-  color: #4b5563;
+  background: white;
+  text-align: center;
 }
 
 .btn-restart {
-  align-self: flex-start;
-  padding: 6px 12px;
+  padding: 10px 20px;
   background: #10b981;
   color: white;
   border: none;

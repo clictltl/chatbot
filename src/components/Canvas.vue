@@ -225,7 +225,27 @@ function handleInputClick(blockId: string) {
 // Cria uma nova conexão
 function createConnection(fromBlockId: string, fromOutputId: string | undefined, toBlockId: string) {
   const fromBlock = props.blocks.find(b => b.id === fromBlockId);
-  if (!fromBlock) return;
+  const toBlock = props.blocks.find(b => b.id === toBlockId);
+
+  if (!fromBlock || !toBlock) return;
+
+  // NÃO permitir saída do bloco 'end'
+  if (fromBlock.type === 'end') {
+    console.warn('Não é possível criar conexão a partir de um bloco de fim');
+    return;
+  }
+
+  // NÃO permitir conexão duplicada idêntica
+  const isDuplicate = props.connections.some(
+    c => c.fromBlockId === fromBlockId &&
+         c.fromOutputId === fromOutputId &&
+         c.toBlockId === toBlockId
+  );
+
+  if (isDuplicate) {
+    console.warn('Conexão duplicada - já existe');
+    return;
+  }
 
   // Atualiza o nextBlockId no bloco de origem
   const updatedBlocks = props.blocks.map(block => {
@@ -264,7 +284,7 @@ function createConnection(fromBlockId: string, fromOutputId: string | undefined,
     toBlockId
   };
 
-  // Remove conexão antiga com mesmo from/fromOutput se existir
+  // Remove APENAS conexão antiga com mesmo from/fromOutput (permite múltiplas entradas)
   const filteredConnections = props.connections.filter(
     c => !(c.fromBlockId === fromBlockId && c.fromOutputId === fromOutputId)
   );
