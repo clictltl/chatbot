@@ -153,6 +153,31 @@ function processBlock(block: Block) {
       }
       break;
 
+    case 'setVariable':
+      // Define o valor de uma variável e continua para o próximo bloco
+      if (block.variableName && sessionVariables.value[block.variableName]) {
+        const interpolatedValue = interpolateText(block.variableValue || '', sessionVariables.value);
+        sessionVariables.value[block.variableName].value = interpolatedValue;
+        syncVariablesToParent();
+      }
+
+      setTimeout(() => {
+        if (block.nextBlockId) {
+          const nextBlock = props.blocks.find(b => b.id === block.nextBlockId);
+          if (nextBlock) {
+            currentBlockId.value = block.nextBlockId;
+            processBlock(nextBlock);
+          } else {
+            console.error(`Bloco de destino não encontrado: ${block.nextBlockId}`);
+            addErrorMessage('(Erro de fluxo: bloco de destino não encontrado)');
+            endChat();
+          }
+        } else {
+          endChat();
+        }
+      }, 300);
+      break;
+
     case 'end':
       // Bloco final da conversa
       if (block.content) {

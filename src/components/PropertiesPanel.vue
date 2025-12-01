@@ -81,7 +81,7 @@ function removeCondition(condId: string) {
         <input type="text" :value="localBlock.type" disabled />
       </div>
 
-      <div v-if="localBlock.type !== 'end'" class="property-group">
+      <div v-if="localBlock.type !== 'end' && localBlock.type !== 'setVariable'" class="property-group">
         <label>{{ localBlock.type === 'message' ? 'Mensagem' : 'Pergunta' }}</label>
         <textarea
           v-model="localBlock.content"
@@ -100,6 +100,26 @@ function removeCondition(condId: string) {
           placeholder="Obrigado por usar o chatbot!"
           rows="3"
         />
+      </div>
+
+      <div v-if="localBlock.type === 'setVariable'" class="property-group">
+        <label>Nome da Variável</label>
+        <select v-model="localBlock.variableName" @change="updateBlock">
+          <option :value="undefined">Selecione uma variável</option>
+          <option v-for="name in Object.keys(variables)" :key="name" :value="name">
+            {{ name }}
+          </option>
+        </select>
+      </div>
+
+      <div v-if="localBlock.type === 'setVariable'" class="property-group">
+        <label>Valor</label>
+        <input
+          v-model="localBlock.variableValue"
+          @input="updateBlock"
+          placeholder="Digite o valor..."
+        />
+        <small>Use &#123;&#123;variavel&#125;&#125; para usar valores de outras variáveis</small>
       </div>
 
       <div v-if="localBlock.type === 'openQuestion'" class="property-group">

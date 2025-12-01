@@ -71,6 +71,8 @@ function getDefaultContent(type: BlockType): string {
       return 'Escolha uma opção:';
     case 'condition':
       return 'Verificando condição...';
+    case 'setVariable':
+      return 'Definindo variável...';
     case 'end':
       return 'Obrigado por usar o chatbot!';
     default:
@@ -210,6 +212,10 @@ function togglePreviewFullscreen() {
             <button @click="createBlock('condition')" class="block-menu-item">
               <span class="block-icon" style="background: #8b5cf6;">⚙️</span>
               Condicional
+            </button>
+            <button @click="createBlock('setVariable')" class="block-menu-item">
+              <span class="block-icon" style="background: #06b6d4;">📝</span>
+              Definir Variável
             </button>
             <button @click="createBlock('end')" class="block-menu-item">
               <span class="block-icon" style="background: #ef4444;">✅</span>

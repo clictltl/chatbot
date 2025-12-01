@@ -29,6 +29,7 @@ const blockTitle = computed(() => {
     case "openQuestion": return "Pergunta Aberta";
     case "choiceQuestion": return "Múltipla Escolha";
     case "condition": return "Condicional";
+    case "setVariable": return "Definir Variável";
     case "end": return "Fim da Conversa";
     default: return "Bloco";
   }
@@ -40,6 +41,7 @@ const blockIcon = computed(() => {
     case "openQuestion": return "❓";
     case "choiceQuestion": return "📊";
     case "condition": return "⚙️";
+    case "setVariable": return "📝";
     case "end": return "✅";
     default: return "📦";
   }
@@ -51,6 +53,7 @@ const blockColor = computed(() => {
     case "openQuestion": return "#10b981";
     case "choiceQuestion": return "#f59e0b";
     case "condition": return "#8b5cf6";
+    case "setVariable": return "#06b6d4";
     case "end": return "#ef4444";
     default: return "#6b7280";
   }
@@ -88,9 +91,7 @@ function handleInputMouseDown(event: MouseEvent) {
 function handleDelete(event: MouseEvent) {
   event.stopPropagation();
   event.preventDefault();
-  if (confirm('Deseja realmente deletar este bloco?')) {
-    emit('delete');
-  }
+  emit('delete');
 }
 </script>
 
@@ -130,7 +131,14 @@ function handleDelete(event: MouseEvent) {
     />
 
     <div class="block-content">
-      <p>{{ block.content || 'Sem conteúdo' }}</p>
+      <p v-if="block.type !== 'setVariable'">{{ block.content || 'Sem conteúdo' }}</p>
+
+      <!-- Visualização para setVariable -->
+      <div v-if="block.type === 'setVariable'" class="variable-assignment">
+        <span class="var-name">{{ block.variableName || '?' }}</span>
+        <span class="var-equals">=</span>
+        <span class="var-value">{{ block.variableValue || '?' }}</span>
+      </div>
 
       <!-- Opções de múltipla escolha -->
       <div v-if="block.type === 'choiceQuestion' && block.choices" class="choices">
@@ -275,6 +283,32 @@ function handleDelete(event: MouseEvent) {
   border-radius: 4px;
   font-size: 12px;
   color: #6b7280;
+}
+
+.variable-assignment {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: #f0f9ff;
+  border-radius: 6px;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+}
+
+.var-name {
+  color: #0369a1;
+  font-weight: 600;
+}
+
+.var-equals {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.var-value {
+  color: #059669;
+  font-weight: 600;
 }
 
 /* Handles de conexão */

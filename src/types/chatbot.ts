@@ -6,7 +6,7 @@
  */
 
 // Tipos de blocos disponíveis no chatbot
-export type BlockType = "message" | "openQuestion" | "choiceQuestion" | "condition" | "end";
+export type BlockType = "message" | "openQuestion" | "choiceQuestion" | "condition" | "setVariable" | "end";
 
 /**
  * BLOCO - Unidade básica do fluxo do chatbot
@@ -16,6 +16,7 @@ export type BlockType = "message" | "openQuestion" | "choiceQuestion" | "conditi
  * - openQuestion: Faz uma pergunta e espera texto livre
  * - choiceQuestion: Apresenta botões com opções
  * - condition: Avalia uma condição e decide o próximo passo
+ * - setVariable: Define o valor de uma variável sem interação do usuário
  * - end: Finaliza a conversa
  */
 export interface Block {
@@ -24,7 +25,8 @@ export interface Block {
   position: { x: number; y: number };     // Posição no canvas para desenho
   content: string;                        // Texto exibido pelo bloco
   choices?: Choice[];                     // Opções (apenas para choiceQuestion)
-  variableName?: string;                  // Nome da variável a salvar (apenas para openQuestion)
+  variableName?: string;                  // Nome da variável a salvar (para openQuestion e setVariable)
+  variableValue?: string;                 // Valor a atribuir à variável (apenas para setVariable)
   conditions?: Condition[];               // Condições a avaliar (apenas para condition)
   nextBlockId?: string;                   // ID do próximo bloco (quando aplicável)
 }
