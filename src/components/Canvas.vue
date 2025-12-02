@@ -74,39 +74,80 @@ function getHandlePosition(handleElement: HTMLElement): { x: number; y: number }
 
 // Gera o path SVG para uma conexão estilo Landbot (com curvas arredondadas de 90 graus)
 function getConnectionPath(fromX: number, fromY: number, toX: number, toY: number): string {
+  const dx = toX - fromX;
   const dy = toY - fromY;
   const radius = 15;
-  const horizontalOffset = 50; // Distância fixa para direita antes de virar
+  const verticalGap = 60; // Espaço acima/abaixo do bloco
+  const horizontalOffset = 50; // Distância para direita antes de virar
 
-  // Se os blocos estão aproximadamente na mesma altura
-  if (Math.abs(dy) < 20) {
-    return `M ${fromX} ${fromY} L ${toX} ${toY}`;
+  // Se a conexão vai para frente (toX > fromX), usa o caminho simples
+  if (dx > 0) {
+    // Se os blocos estão aproximadamente na mesma altura
+    if (Math.abs(dy) < 20) {
+      return `M ${fromX} ${fromY} L ${toX} ${toY}`;
+    }
+
+    // Indo para frente e para baixo/cima
+    const goingDown = dy > 0;
+    const firstCornerX = fromX + horizontalOffset;
+
+    if (goingDown) {
+      return `
+        M ${fromX} ${fromY}
+        L ${firstCornerX - radius} ${fromY}
+        Q ${firstCornerX} ${fromY}, ${firstCornerX} ${fromY + radius}
+        L ${firstCornerX} ${toY - radius}
+        Q ${firstCornerX} ${toY}, ${firstCornerX + radius} ${toY}
+        L ${toX} ${toY}
+      `.replace(/\s+/g, ' ').trim();
+    } else {
+      return `
+        M ${fromX} ${fromY}
+        L ${firstCornerX - radius} ${fromY}
+        Q ${firstCornerX} ${fromY}, ${firstCornerX} ${fromY - radius}
+        L ${firstCornerX} ${toY + radius}
+        Q ${firstCornerX} ${toY}, ${firstCornerX + radius} ${toY}
+        L ${toX} ${toY}
+      `.replace(/\s+/g, ' ').trim();
+    }
   }
 
-  // Direção vertical (para cima ou para baixo)
-  const goingDown = dy > 0;
+  // Se a conexão vai para trás (toX <= fromX), usa o caminho em U
+  const rightX = fromX + horizontalOffset;
+  const leftX = toX - horizontalOffset;
 
-  // Primeira curva: sai para direita e vira para cima/baixo
-  const firstCornerX = fromX + horizontalOffset;
+  // Se o destino está abaixo, passa por baixo; se está acima, passa por cima
+  const goingDown = dy > 0;
+  const edgeY = goingDown
+    ? Math.max(fromY, toY) + verticalGap  // Passa por baixo
+    : Math.min(fromY, toY) - verticalGap; // Passa por cima
 
   if (goingDown) {
-    // Indo para baixo: direita -> baixo -> esquerda/direita
+    // Caminho por baixo: direita -> baixo -> esquerda -> sobe até destino
     return `
       M ${fromX} ${fromY}
-      L ${firstCornerX - radius} ${fromY}
-      Q ${firstCornerX} ${fromY}, ${firstCornerX} ${fromY + radius}
-      L ${firstCornerX} ${toY - radius}
-      Q ${firstCornerX} ${toY}, ${firstCornerX + radius} ${toY}
+      L ${rightX - radius} ${fromY}
+      Q ${rightX} ${fromY}, ${rightX} ${fromY + radius}
+      L ${rightX} ${edgeY - radius}
+      Q ${rightX} ${edgeY}, ${rightX - radius} ${edgeY}
+      L ${leftX + radius} ${edgeY}
+      Q ${leftX} ${edgeY}, ${leftX} ${edgeY - radius}
+      L ${leftX} ${toY + radius}
+      Q ${leftX} ${toY}, ${leftX + radius} ${toY}
       L ${toX} ${toY}
     `.replace(/\s+/g, ' ').trim();
   } else {
-    // Indo para cima: direita -> cima -> esquerda/direita
+    // Caminho por cima: direita -> cima -> esquerda -> desce até destino
     return `
       M ${fromX} ${fromY}
-      L ${firstCornerX - radius} ${fromY}
-      Q ${firstCornerX} ${fromY}, ${firstCornerX} ${fromY - radius}
-      L ${firstCornerX} ${toY + radius}
-      Q ${firstCornerX} ${toY}, ${firstCornerX + radius} ${toY}
+      L ${rightX - radius} ${fromY}
+      Q ${rightX} ${fromY}, ${rightX} ${fromY - radius}
+      L ${rightX} ${edgeY + radius}
+      Q ${rightX} ${edgeY}, ${rightX - radius} ${edgeY}
+      L ${leftX + radius} ${edgeY}
+      Q ${leftX} ${edgeY}, ${leftX} ${edgeY + radius}
+      L ${leftX} ${toY - radius}
+      Q ${leftX} ${toY}, ${leftX + radius} ${toY}
       L ${toX} ${toY}
     `.replace(/\s+/g, ' ').trim();
   }
@@ -598,7 +639,7 @@ onMounted(() => {
   height: 100%;
   pointer-events: none;
   overflow: visible;
-  z-index: 100;
+  z-index: 1;
 }
 
 .blocks-container {
@@ -607,7 +648,7 @@ onMounted(() => {
   left: 0;
   width: 100%;
   height: 100%;
-  z-index: 1;
+  z-index: 100;
 }
 
 .connection-path {
