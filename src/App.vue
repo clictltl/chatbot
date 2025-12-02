@@ -9,7 +9,7 @@
  * - variables: Objeto com as variáveis disponíveis no chatbot
  */
 
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import type { Block, Connection, Variable, BlockType } from './types/chatbot';
 import Canvas from './components/Canvas.vue';
 import PropertiesPanel from './components/PropertiesPanel.vue';
@@ -40,11 +40,28 @@ const contextMenuPosition = ref<{ x: number; y: number; screenX: number; screenY
 const isPreviewFullscreen = ref(false);
 const sidePanelWidth = ref(350);
 const isResizing = ref(false);
+const showBlockContextMenu = ref(false);
+const blockContextMenuPosition = ref<{ x: number; y: number; screenX: number; screenY: number } | null>(null);
+const contextMenuBlockId = ref<string | null>(null);
+const hasCopiedBlock = ref(false);
 
 // Retorna o bloco atualmente selecionado
 const selectedBlock = computed(() => {
   if (!selectedBlockId.value) return null;
   return blocks.value.find(b => b.id === selectedBlockId.value) || null;
+});
+
+// Verifica se há bloco copiado no localStorage ao montar o componente
+onMounted(() => {
+  hasCopiedBlock.value = !!localStorage.getItem('copiedBlock');
+
+  // Adiciona listener para fechar menus ao clicar fora
+  document.addEventListener('click', handleDocumentClick);
+});
+
+// Remove listener ao desmontar
+onUnmounted(() => {
+  document.removeEventListener('click', handleDocumentClick);
 });
 
 // Cria um novo bloco no canvas
@@ -66,6 +83,16 @@ function createBlock(type: BlockType) {
   showNewBlockMenu.value = false;
   showContextMenu.value = false;
   contextMenuPosition.value = null;
+}
+
+// Handler de clique no documento para fechar menus
+function handleDocumentClick(event: MouseEvent) {
+  const target = event.target as HTMLElement;
+
+  // Verifica se o clique foi fora do menu de novo bloco
+  if (!target.closest('.new-block-wrapper')) {
+    showNewBlockMenu.value = false;
+  }
 }
 
 // Retorna o conteúdo padrão baseado no tipo do bloco
@@ -230,6 +257,83 @@ function handleCanvasContextMenu(position: { x: number; y: number; screenX: numb
 function closeContextMenu() {
   showContextMenu.value = false;
   contextMenuPosition.value = null;
+  showBlockContextMenu.value = false;
+  blockContextMenuPosition.value = null;
+  contextMenuBlockId.value = null;
+}
+
+// Abre o menu de contexto do bloco
+function handleBlockContextMenu(blockId: string, position: { x: number; y: number; screenX: number; screenY: number }) {
+  showContextMenu.value = false;
+  contextMenuBlockId.value = blockId;
+  blockContextMenuPosition.value = position;
+  showBlockContextMenu.value = true;
+}
+
+// Duplica um bloco
+function duplicateBlock() {
+  if (!contextMenuBlockId.value) return;
+
+  const blockToDuplicate = blocks.value.find(b => b.id === contextMenuBlockId.value);
+  if (!blockToDuplicate) return;
+
+  const newBlock: Block = {
+    ...JSON.parse(JSON.stringify(blockToDuplicate)),
+    id: Date.now().toString(),
+    position: {
+      x: blockToDuplicate.position.x + 50,
+      y: blockToDuplicate.position.y + 50
+    }
+  };
+
+  blocks.value = [...blocks.value, newBlock];
+  closeContextMenu();
+}
+
+// Copia um bloco (salva no localStorage)
+function copyBlock() {
+  if (!contextMenuBlockId.value) return;
+
+  const blockToCopy = blocks.value.find(b => b.id === contextMenuBlockId.value);
+  if (!blockToCopy) return;
+
+  localStorage.setItem('copiedBlock', JSON.stringify(blockToCopy));
+  hasCopiedBlock.value = true;
+  closeContextMenu();
+}
+
+// Cola um bloco copiado
+function pasteBlock() {
+  const copiedBlockJson = localStorage.getItem('copiedBlock');
+  if (!copiedBlockJson) return;
+
+  const copiedBlock = JSON.parse(copiedBlockJson);
+  const newBlock: Block = {
+    ...copiedBlock,
+    id: Date.now().toString(),
+    position: contextMenuPosition.value
+      ? { x: contextMenuPosition.value.x, y: contextMenuPosition.value.y }
+      : { x: copiedBlock.position.x + 50, y: copiedBlock.position.y + 50 }
+  };
+
+  blocks.value = [...blocks.value, newBlock];
+  closeContextMenu();
+}
+
+// Deleta um bloco do menu de contexto
+function deleteBlockFromMenu() {
+  if (!contextMenuBlockId.value) return;
+
+  blocks.value = blocks.value.filter(b => b.id !== contextMenuBlockId.value);
+  connections.value = connections.value.filter(
+    c => c.fromBlockId !== contextMenuBlockId.value && c.toBlockId !== contextMenuBlockId.value
+  );
+
+  if (selectedBlockId.value === contextMenuBlockId.value) {
+    selectedBlockId.value = null;
+  }
+
+  closeContextMenu();
 }
 
 // Inicia o redimensionamento do painel lateral
@@ -274,13 +378,13 @@ function startResize(event: MouseEvent) {
       </div>
 
       <div class="toolbar-right">
-        <div class="new-block-wrapper">
+        <div class="new-block-wrapper" @click.stop>
           <button @click="showNewBlockMenu = !showNewBlockMenu" class="btn-primary">
             ➕ Novo Bloco
           </button>
 
           <!-- Menu dropdown para criar novos blocos -->
-          <div v-if="showNewBlockMenu" class="block-menu">
+          <div v-if="showNewBlockMenu" class="block-menu" @click.stop>
             <button @click="createBlock('message')" class="block-menu-item">
               <span class="block-icon" style="background: #3b82f6;">💬</span>
               Mensagem
@@ -336,6 +440,7 @@ function startResize(event: MouseEvent) {
           @update:connections="connections = $event"
           @update:zoom="zoom = $event"
           @context-menu="handleCanvasContextMenu"
+          @block-context-menu="handleBlockContextMenu"
         />
 
         <!-- Menu de contexto (botão direito) -->
@@ -380,7 +485,35 @@ function startResize(event: MouseEvent) {
             <span class="block-icon" style="background: #ef4444;">✅</span>
             Fim da Conversa
           </button>
+          <button v-if="hasCopiedBlock" @click="pasteBlock" class="block-menu-item paste-item">
+            <span class="block-icon" style="background: #6366f1;">📋</span>
+            Colar Bloco
+          </button>
         </div>
+      </div>
+
+      <!-- Menu de contexto do bloco (botão direito no bloco) -->
+      <div
+        v-if="showBlockContextMenu && blockContextMenuPosition"
+        class="context-menu block-context-menu"
+        :style="{
+          left: blockContextMenuPosition.screenX + 'px',
+          top: blockContextMenuPosition.screenY + 'px'
+        }"
+        @click.stop
+      >
+        <button @click="duplicateBlock" class="context-menu-item">
+          <span>⚡</span>
+          Duplicar
+        </button>
+        <button @click="copyBlock" class="context-menu-item">
+          <span>📋</span>
+          Copiar
+        </button>
+        <button @click="deleteBlockFromMenu" class="context-menu-item delete">
+          <span>🗑️</span>
+          Deletar
+        </button>
       </div>
 
       <!-- Painel lateral com propriedades, variáveis e preview -->
@@ -582,6 +715,47 @@ body {
   height: 28px;
   border-radius: 6px;
   font-size: 14px;
+}
+
+/* Menu de contexto do bloco */
+.block-context-menu {
+  min-width: 160px;
+}
+
+.context-menu-item {
+  width: 100%;
+  padding: 10px 16px;
+  background: white;
+  border: none;
+  text-align: left;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.context-menu-item:hover {
+  background: #f3f4f6;
+}
+
+.context-menu-item.delete {
+  color: #ef4444;
+}
+
+.context-menu-item.delete:hover {
+  background: #fee2e2;
+}
+
+.context-menu-item span {
+  font-size: 16px;
+}
+
+.paste-item {
+  border-top: 1px solid #e5e7eb;
+  margin-top: 4px;
+  padding-top: 12px;
 }
 
 /* Layout principal */

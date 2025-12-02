@@ -20,6 +20,7 @@ const emit = defineEmits<{
   dragStart: [event: MouseEvent];
   connectStart: [outputId?: string];
   delete: [];
+  contextMenu: [event: MouseEvent];
 }>();
 
 // Título e ícone do bloco baseado no tipo
@@ -82,6 +83,16 @@ function handleClick(event: MouseEvent) {
   emit('select');
 }
 
+function handleContextMenu(event: MouseEvent) {
+  event.preventDefault();
+  event.stopPropagation();
+  const target = event.target as HTMLElement;
+  if (target.classList.contains('handle')) {
+    return;
+  }
+  emit('contextMenu', event);
+}
+
 function handleOutputMouseDown(event: MouseEvent, outputId?: string) {
   event.stopPropagation();
   event.preventDefault();
@@ -113,6 +124,7 @@ function handleDelete(event: MouseEvent) {
     }"
     @mousedown="handleMouseDown"
     @click="handleClick"
+    @contextmenu="handleContextMenu"
   >
     <div class="block-header" :style="{ backgroundColor: blockColor }">
       <span class="block-icon">{{ blockIcon }}</span>

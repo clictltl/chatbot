@@ -27,6 +27,7 @@ const emit = defineEmits<{
   'update:connections': [connections: Connection[]];
   'update:zoom': [zoom: number];
   'context-menu': [position: { x: number; y: number; screenX: number; screenY: number }];
+  'block-context-menu': [blockId: string, position: { x: number; y: number; screenX: number; screenY: number }];
 }>();
 
 const canvasRef = ref<HTMLDivElement | null>(null);
@@ -474,6 +475,21 @@ function handleKeyDown(event: KeyboardEvent) {
   }
 }
 
+// Handler para context menu em blocos
+function handleBlockContextMenu(blockId: string, event: MouseEvent) {
+  const canvasRect = canvasRef.value?.getBoundingClientRect();
+  if (!canvasRect) return;
+
+  const position = {
+    x: event.clientX - canvasRect.left,
+    y: event.clientY - canvasRect.top,
+    screenX: event.clientX,
+    screenY: event.clientY
+  };
+
+  emit('block-context-menu', blockId, position);
+}
+
 // Força re-render quando blocos ou conexões mudam
 const renderKey = ref(0);
 
@@ -590,6 +606,7 @@ onMounted(() => {
         @drag-start="(e) => handleBlockDragStart(block.id, e)"
         @connect-start="(outputId) => handleConnectStart(block.id, outputId)"
         @delete="handleBlockDelete(block.id)"
+        @context-menu="(e) => handleBlockContextMenu(block.id, e)"
       />
     </div>
 
