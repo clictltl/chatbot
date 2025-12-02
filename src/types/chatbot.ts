@@ -73,6 +73,7 @@ export interface Connection {
   fromBlockId: string;                    // ID do bloco de origem
   fromOutputId?: string;                  // ID da escolha/condição de origem (se houver)
   toBlockId: string;                      // ID do bloco de destino
+  waypoints?: { x: number; y: number }[]; // Pontos intermediários para personalizar o caminho
 }
 
 /**

@@ -50,6 +50,10 @@ const tempConnectionPath = ref<string>('');
 // Estado da seleção de conexão
 const selectedConnectionId = ref<string | null>(null);
 
+// Estado do arraste de waypoints
+const draggingWaypoint = ref<{ connectionId: string; waypointIndex: number } | null>(null);
+const draggingSegment = ref<{ connectionId: string; segmentIndex: number; startPos: { x: number; y: number } } | null>(null);
+
 const canvasStyle = computed(() => ({
   transform: `translate(${panOffset.value.x}px, ${panOffset.value.y}px) scale(${props.zoom / 100})`,
   transformOrigin: '0 0',
@@ -248,12 +252,18 @@ function handleCanvasMouseMove(event: MouseEvent) {
     );
     emit('update:blocks', updatedBlocks);
   }
+
+  // Arrastar segmento/waypoint
+  if (draggingSegment.value || draggingWaypoint.value) {
+    handleSegmentDrag(event);
+  }
 }
 
 // Mouse up no canvas
 function handleCanvasMouseUp() {
   isPanning.value = false;
   draggedBlock.value = null;
+  handleSegmentMouseUp();
 }
 
 // Início do arraste de um bloco
@@ -399,6 +409,63 @@ function createConnection(fromBlockId: string, fromOutputId: string | undefined,
   emit('update:connections', [...filteredConnections, newConnection]);
 }
 
+// Cria um path suave com cantos arredondados entre pontos
+function getSmoothPath(points: { x: number; y: number }[]): string {
+  if (points.length < 2) return '';
+  if (points.length === 2) {
+    return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+  }
+
+  const radius = 20; // Raio das curvas
+  let path = `M ${points[0].x} ${points[0].y}`;
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const current = points[i];
+    const next = points[i + 1];
+    const isLast = i === points.length - 2;
+
+    const dx = next.x - current.x;
+    const dy = next.y - current.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (distance < radius * 2) {
+      // Se a distância for muito curta, faz linha reta
+      path += ` L ${next.x} ${next.y}`;
+    } else if (isLast) {
+      // Último segmento: arredonda apenas o início
+      const startRadius = Math.min(radius, distance / 2);
+      const ratio = startRadius / distance;
+      const cornerX = current.x + dx * ratio;
+      const cornerY = current.y + dy * ratio;
+
+      path += ` L ${cornerX} ${cornerY}`;
+      path += ` L ${next.x} ${next.y}`;
+    } else {
+      // Segmentos intermediários: arredonda o final
+      const nextNext = points[i + 2];
+      const endRadius = Math.min(radius, distance / 2);
+      const ratio = 1 - endRadius / distance;
+      const cornerX = current.x + dx * ratio;
+      const cornerY = current.y + dy * ratio;
+
+      path += ` L ${cornerX} ${cornerY}`;
+
+      // Calcula o ponto de controle para a curva
+      const nextDx = nextNext.x - next.x;
+      const nextDy = nextNext.y - next.y;
+      const nextDistance = Math.sqrt(nextDx * nextDx + nextDy * nextDy);
+      const nextRatio = Math.min(radius, nextDistance / 2) / nextDistance;
+      const nextCornerX = next.x + nextDx * nextRatio;
+      const nextCornerY = next.y + nextDy * nextRatio;
+
+      // Curva quadrática suave
+      path += ` Q ${next.x} ${next.y}, ${nextCornerX} ${nextCornerY}`;
+    }
+  }
+
+  return path;
+}
+
 // Calcula o path de uma conexão baseado nos IDs dos handles
 function getConnectionPathById(conn: Connection): string {
   const fromHandleId = conn.fromOutputId
@@ -414,7 +481,37 @@ function getConnectionPathById(conn: Connection): string {
   const fromPos = getHandlePosition(fromHandle);
   const toPos = getHandlePosition(toHandle);
 
+  // Se tiver waypoints, cria um path suave que passa por eles
+  if (conn.waypoints && conn.waypoints.length > 0) {
+    const points = [fromPos, ...conn.waypoints, toPos];
+    return getSmoothPath(points);
+  }
+
   return getConnectionPath(fromPos.x, fromPos.y, toPos.x, toPos.y);
+}
+
+// Obtém os pontos de uma conexão (início, waypoints, fim)
+function getConnectionPoints(conn: Connection): { x: number; y: number }[] {
+  const fromHandleId = conn.fromOutputId
+    ? `${conn.fromBlockId}-output-${conn.fromOutputId}`
+    : `${conn.fromBlockId}-output`;
+  const toHandleId = `${conn.toBlockId}-input`;
+
+  const fromHandle = document.querySelector(`[data-handle-id='${fromHandleId}']`) as HTMLElement;
+  const toHandle = document.querySelector(`[data-handle-id='${toHandleId}']`) as HTMLElement;
+
+  if (!fromHandle || !toHandle) return [];
+
+  const fromPos = getHandlePosition(fromHandle);
+  const toPos = getHandlePosition(toHandle);
+
+  const points = [fromPos];
+  if (conn.waypoints) {
+    points.push(...conn.waypoints);
+  }
+  points.push(toPos);
+
+  return points;
 }
 
 // Seleciona uma conexão
@@ -423,6 +520,87 @@ function handleConnectionClick(connectionId: string, event: MouseEvent) {
   event.preventDefault();
   selectedConnectionId.value = connectionId;
   console.log('Connection clicked:', connectionId);
+}
+
+// Inicia o arraste de um segmento para criar/mover waypoint
+function handleSegmentMouseDown(connectionId: string, segmentIndex: number, event: MouseEvent) {
+  event.stopPropagation();
+  event.preventDefault();
+
+  const canvasBounds = canvasRef.value?.getBoundingClientRect();
+  if (!canvasBounds) return;
+
+  const zoom = props.zoom / 100;
+  const startPos = {
+    x: (event.clientX - canvasBounds.left - panOffset.value.x) / zoom,
+    y: (event.clientY - canvasBounds.top - panOffset.value.y) / zoom
+  };
+
+  draggingSegment.value = { connectionId, segmentIndex, startPos };
+  selectedConnectionId.value = connectionId;
+}
+
+// Inicia o arraste de um waypoint existente
+function handleWaypointMouseDown(connectionId: string, waypointIndex: number, event: MouseEvent) {
+  event.stopPropagation();
+  event.preventDefault();
+  draggingWaypoint.value = { connectionId, waypointIndex };
+}
+
+// Atualiza a posição durante o arraste
+function handleSegmentDrag(event: MouseEvent) {
+  if (!draggingSegment.value && !draggingWaypoint.value) return;
+
+  const canvasBounds = canvasRef.value?.getBoundingClientRect();
+  if (!canvasBounds) return;
+
+  const zoom = props.zoom / 100;
+  const currentPos = {
+    x: (event.clientX - canvasBounds.left - panOffset.value.x) / zoom,
+    y: (event.clientY - canvasBounds.top - panOffset.value.y) / zoom
+  };
+
+  if (draggingSegment.value) {
+    // Criando um novo waypoint arrastando o segmento
+    const { connectionId, segmentIndex } = draggingSegment.value;
+    const connection = props.connections.find(c => c.id === connectionId);
+    if (!connection) return;
+
+    const updatedConnections = props.connections.map(c => {
+      if (c.id !== connectionId) return c;
+
+      const waypoints = c.waypoints ? [...c.waypoints] : [];
+      waypoints.splice(segmentIndex, 0, currentPos);
+
+      return { ...c, waypoints };
+    });
+
+    emit('update:connections', updatedConnections);
+
+    // Muda para modo de arraste de waypoint
+    draggingWaypoint.value = { connectionId, waypointIndex: segmentIndex };
+    draggingSegment.value = null;
+  } else if (draggingWaypoint.value) {
+    // Movendo um waypoint existente
+    const { connectionId, waypointIndex } = draggingWaypoint.value;
+
+    const updatedConnections = props.connections.map(c => {
+      if (c.id !== connectionId) return c;
+
+      const waypoints = c.waypoints ? [...c.waypoints] : [];
+      waypoints[waypointIndex] = currentPos;
+
+      return { ...c, waypoints };
+    });
+
+    emit('update:connections', updatedConnections);
+  }
+}
+
+// Finaliza o arraste
+function handleSegmentMouseUp() {
+  draggingSegment.value = null;
+  draggingWaypoint.value = null;
 }
 
 // Deleta a conexão selecionada
@@ -571,7 +749,7 @@ onMounted(() => {
 
       <!-- Conexões existentes -->
       <g v-for="conn in connections" :key="`${conn.id}-${renderKey}`">
-        <!-- Path invisível mais grosso para facilitar o clique -->
+        <!-- Hitbox invisível para facilitar clique -->
         <path
           :d="getConnectionPathById(conn)"
           stroke="transparent"
@@ -580,6 +758,7 @@ onMounted(() => {
           class="connection-hitbox"
           @click="handleConnectionClick(conn.id, $event)"
         />
+
         <!-- Path visível -->
         <path
           :d="getConnectionPathById(conn)"
@@ -589,6 +768,37 @@ onMounted(() => {
           marker-end="url(#arrowhead)"
           class="connection-path"
           @click="handleConnectionClick(conn.id, $event)"
+        />
+
+        <!-- Segmentos arrastáveis (apenas quando selecionado) -->
+        <template v-if="selectedConnectionId === conn.id">
+          <line
+            v-for="(point, index) in getConnectionPoints(conn).slice(0, -1)"
+            :key="`segment-${index}`"
+            :x1="point.x"
+            :y1="point.y"
+            :x2="getConnectionPoints(conn)[index + 1].x"
+            :y2="getConnectionPoints(conn)[index + 1].y"
+            stroke="rgba(59, 130, 246, 0.2)"
+            stroke-width="12"
+            class="connection-segment"
+            @mousedown="handleSegmentMouseDown(conn.id, index, $event)"
+          />
+        </template>
+
+        <!-- Waypoints editáveis -->
+        <circle
+          v-for="(waypoint, index) in conn.waypoints"
+          :key="`waypoint-${index}`"
+          :cx="waypoint.x"
+          :cy="waypoint.y"
+          :r="selectedConnectionId === conn.id ? 8 : 5"
+          :fill="selectedConnectionId === conn.id ? '#3b82f6' : '#94a3b8'"
+          :stroke="selectedConnectionId === conn.id ? '#ffffff' : 'transparent'"
+          :stroke-width="2"
+          class="connection-waypoint"
+          @mousedown="handleWaypointMouseDown(conn.id, index, $event)"
+          @click.stop
         />
       </g>
 
@@ -718,6 +928,26 @@ g:hover .connection-path {
 .connection-temp {
   pointer-events: none;
   animation: dash 0.5s linear infinite;
+}
+
+.connection-segment {
+  cursor: grab;
+  pointer-events: stroke;
+}
+
+.connection-segment:active {
+  cursor: grabbing;
+}
+
+.connection-waypoint {
+  cursor: move;
+  pointer-events: all;
+  transition: r 0.2s, fill 0.2s, stroke 0.2s;
+}
+
+.connection-waypoint:hover {
+  r: 10;
+  filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.5));
 }
 
 @keyframes dash {
