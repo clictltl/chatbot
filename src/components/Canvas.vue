@@ -26,6 +26,7 @@ const emit = defineEmits<{
   'update:blocks': [blocks: Block[]];
   'update:connections': [connections: Connection[]];
   'update:zoom': [zoom: number];
+  'context-menu': [position: { x: number; y: number; screenX: number; screenY: number }];
 }>();
 
 const canvasRef = ref<HTMLDivElement | null>(null);
@@ -145,6 +146,24 @@ function handleCanvasMouseDown(event: MouseEvent) {
     emit('update:selectedBlockId', null);
     selectedConnectionId.value = null;
   }
+}
+
+// Manipula o clique direito no canvas
+function handleCanvasContextMenu(event: MouseEvent) {
+  event.preventDefault();
+
+  const rect = canvasRef.value?.getBoundingClientRect();
+  if (!rect) return;
+
+  const zoom = props.zoom / 100;
+  const position = {
+    x: (event.clientX - rect.left - panOffset.value.x) / zoom,
+    y: (event.clientY - rect.top - panOffset.value.y) / zoom,
+    screenX: event.clientX,
+    screenY: event.clientY
+  };
+
+  emit('context-menu', position);
 }
 
 // Mouse move no canvas
@@ -460,6 +479,7 @@ onMounted(() => {
     @mousemove="handleCanvasMouseMove"
     @mouseup="handleCanvasMouseUp"
     @mouseleave="handleCanvasMouseUp"
+    @contextmenu="handleCanvasContextMenu"
   >
     <!-- SVG para desenhar as conexões -->
     <svg

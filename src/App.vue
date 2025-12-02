@@ -35,6 +35,8 @@ const selectedBlockId = ref<string | null>(null);
 const zoom = ref(100);
 const activeTab = ref<'properties' | 'variables' | 'preview'>('properties');
 const showNewBlockMenu = ref(false);
+const showContextMenu = ref(false);
+const contextMenuPosition = ref<{ x: number; y: number; screenX: number; screenY: number } | null>(null);
 const isPreviewFullscreen = ref(false);
 
 // Retorna o bloco atualmente selecionado
@@ -48,7 +50,9 @@ function createBlock(type: BlockType) {
   const newBlock: Block = {
     id: `block_${Date.now()}`,
     type,
-    position: { x: 100 + blocks.value.length * 50, y: 100 + blocks.value.length * 30 },
+    position: contextMenuPosition.value
+      ? { x: contextMenuPosition.value.x, y: contextMenuPosition.value.y }
+      : { x: 100 + blocks.value.length * 50, y: 100 + blocks.value.length * 30 },
     content: getDefaultContent(type),
     choices: type === 'choiceQuestion' ? [] : undefined,
     conditions: type === 'condition' ? [] : undefined,
@@ -58,6 +62,8 @@ function createBlock(type: BlockType) {
   blocks.value.push(newBlock);
   selectedBlockId.value = newBlock.id;
   showNewBlockMenu.value = false;
+  showContextMenu.value = false;
+  contextMenuPosition.value = null;
 }
 
 // Retorna o conteúdo padrão baseado no tipo do bloco
@@ -207,6 +213,18 @@ function togglePreviewFullscreen() {
     activeTab.value = 'preview';
   }
 }
+
+// Abre o menu de contexto com botão direito
+function handleCanvasContextMenu(position: { x: number; y: number; screenX: number; screenY: number }) {
+  contextMenuPosition.value = position;
+  showContextMenu.value = true;
+}
+
+// Fecha o menu de contexto
+function closeContextMenu() {
+  showContextMenu.value = false;
+  contextMenuPosition.value = null;
+}
 </script>
 
 <template>
@@ -272,7 +290,7 @@ function togglePreviewFullscreen() {
     <!-- Área principal com canvas e painel lateral -->
     <div class="main-content">
       <!-- Canvas onde os blocos são desenhados e conectados -->
-      <div class="canvas-area" v-show="!isPreviewFullscreen">
+      <div class="canvas-area" v-show="!isPreviewFullscreen" @click="closeContextMenu">
         <Canvas
           :blocks="blocks"
           :connections="connections"
@@ -282,7 +300,44 @@ function togglePreviewFullscreen() {
           @update:blocks="blocks = $event"
           @update:connections="connections = $event"
           @update:zoom="zoom = $event"
+          @context-menu="handleCanvasContextMenu"
         />
+
+        <!-- Menu de contexto (botão direito) -->
+        <div
+          v-if="showContextMenu && contextMenuPosition"
+          class="context-menu"
+          :style="{
+            left: contextMenuPosition.screenX + 'px',
+            top: contextMenuPosition.screenY + 'px'
+          }"
+          @click.stop
+        >
+          <button @click="createBlock('message')" class="block-menu-item">
+            <span class="block-icon" style="background: #3b82f6;">💬</span>
+            Mensagem
+          </button>
+          <button @click="createBlock('openQuestion')" class="block-menu-item">
+            <span class="block-icon" style="background: #10b981;">❓</span>
+            Pergunta Aberta
+          </button>
+          <button @click="createBlock('choiceQuestion')" class="block-menu-item">
+            <span class="block-icon" style="background: #f59e0b;">📊</span>
+            Múltipla Escolha
+          </button>
+          <button @click="createBlock('condition')" class="block-menu-item">
+            <span class="block-icon" style="background: #8b5cf6;">⚙️</span>
+            Condicional
+          </button>
+          <button @click="createBlock('setVariable')" class="block-menu-item">
+            <span class="block-icon" style="background: #06b6d4;">📝</span>
+            Definir Variável
+          </button>
+          <button @click="createBlock('end')" class="block-menu-item">
+            <span class="block-icon" style="background: #ef4444;">✅</span>
+            Fim da Conversa
+          </button>
+        </div>
       </div>
 
       <!-- Painel lateral com propriedades, variáveis e preview -->
@@ -542,5 +597,17 @@ body {
 .tab-content {
   flex: 1;
   overflow: hidden;
+}
+
+/* Menu de contexto */
+.context-menu {
+  position: fixed;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  min-width: 220px;
+  padding: 8px;
 }
 </style>
