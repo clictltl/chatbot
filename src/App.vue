@@ -363,7 +363,7 @@ function startResize(event: MouseEvent) {
     <!-- Toolbar superior com controles principais -->
     <header class="toolbar">
       <div class="toolbar-left">
-        <h1>Crie o seu chatbot</h1>
+        <h1>Crie o seu chatbott </h1>
       </div>
 
       <div class="toolbar-center">
