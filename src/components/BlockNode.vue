@@ -225,6 +225,7 @@ function handleDelete(event: MouseEvent) {
   cursor: move;
   transition: box-shadow 0.2s, border-color 0.2s;
   user-select: none;
+  z-index: 160;
 }
 
 .block-node:hover {
@@ -367,7 +368,7 @@ function handleDelete(event: MouseEvent) {
   border-radius: 50%;
   cursor: crosshair;
   transition: all 0.2s;
-  z-index: 10;
+  z-index: 200;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
@@ -382,6 +383,19 @@ function handleDelete(event: MouseEvent) {
   top: 50%;
   left: -8px;
   transform: translateY(-50%);
+}
+
+/* Área clicável expandida no handle de entrada */
+.input-handle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 32px;
+  height: 32px;
+  transform: translate(-50%, -50%);
+  cursor: crosshair;
+  z-index: 250;
 }
 
 .input-handle:hover {

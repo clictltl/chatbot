@@ -410,19 +410,39 @@ function createConnection(fromBlockId: string, fromOutputId: string | undefined,
 }
 
 // Cria um path suave com cantos arredondados entre pontos
-function getSmoothPath(points: { x: number; y: number }[]): string {
+function getSmoothPath(points: { x: number; y: number }[], shortenEnd: number = 0): string {
   if (points.length < 2) return '';
-  if (points.length === 2) {
-    return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+
+  // Encurta o último ponto se necessário
+  const workingPoints = [...points];
+  if (shortenEnd > 0 && workingPoints.length >= 2) {
+    const lastIdx = workingPoints.length - 1;
+    const prevPoint = workingPoints[lastIdx - 1];
+    const lastPoint = workingPoints[lastIdx];
+
+    const dx = lastPoint.x - prevPoint.x;
+    const dy = lastPoint.y - prevPoint.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (distance > shortenEnd) {
+      workingPoints[lastIdx] = {
+        x: lastPoint.x - (dx / distance) * shortenEnd,
+        y: lastPoint.y - (dy / distance) * shortenEnd
+      };
+    }
+  }
+
+  if (workingPoints.length === 2) {
+    return `M ${workingPoints[0].x} ${workingPoints[0].y} L ${workingPoints[1].x} ${workingPoints[1].y}`;
   }
 
   const radius = 20; // Raio das curvas
-  let path = `M ${points[0].x} ${points[0].y}`;
+  let path = `M ${workingPoints[0].x} ${workingPoints[0].y}`;
 
-  for (let i = 0; i < points.length - 1; i++) {
-    const current = points[i];
-    const next = points[i + 1];
-    const isLast = i === points.length - 2;
+  for (let i = 0; i < workingPoints.length - 1; i++) {
+    const current = workingPoints[i];
+    const next = workingPoints[i + 1];
+    const isLast = i === workingPoints.length - 2;
 
     const dx = next.x - current.x;
     const dy = next.y - current.y;
@@ -442,7 +462,7 @@ function getSmoothPath(points: { x: number; y: number }[]): string {
       path += ` L ${next.x} ${next.y}`;
     } else {
       // Segmentos intermediários: arredonda o final
-      const nextNext = points[i + 2];
+      const nextNext = workingPoints[i + 2];
       const endRadius = Math.min(radius, distance / 2);
       const ratio = 1 - endRadius / distance;
       const cornerX = current.x + dx * ratio;
@@ -481,13 +501,22 @@ function getConnectionPathById(conn: Connection): string {
   const fromPos = getHandlePosition(fromHandle);
   const toPos = getHandlePosition(toHandle);
 
+  // Encurta o path para parar antes do handle de destino (deixa espaço para clicar)
+  // Como as curvas sempre terminam horizontalmente (da esquerda para direita),
+  // encurtamos apenas no eixo X
+  const shortenDistance = 8; // pixels antes do handle
+  const shortenedToPos = {
+    x: toPos.x - shortenDistance,
+    y: toPos.y
+  };
+
   // Se tiver waypoints, cria um path suave que passa por eles
   if (conn.waypoints && conn.waypoints.length > 0) {
-    const points = [fromPos, ...conn.waypoints, toPos];
-    return getSmoothPath(points);
+    const points = [fromPos, ...conn.waypoints, shortenedToPos];
+    return getSmoothPath(points, 0); // Já encurtamos acima
   }
 
-  return getConnectionPath(fromPos.x, fromPos.y, toPos.x, toPos.y);
+  return getConnectionPath(fromPos.x, fromPos.y, shortenedToPos.x, shortenedToPos.y);
 }
 
 // Obtém os pontos de uma conexão (início, waypoints, fim)
@@ -753,7 +782,7 @@ onMounted(() => {
         <path
           :d="getConnectionPathById(conn)"
           stroke="transparent"
-          stroke-width="20"
+          stroke-width="12"
           fill="none"
           class="connection-hitbox"
           @click="handleConnectionClick(conn.id, $event)"
