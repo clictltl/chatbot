@@ -15,6 +15,10 @@ import Canvas from './components/Canvas.vue';
 import PropertiesPanel from './components/PropertiesPanel.vue';
 import VariablesPanel from './components/VariablesPanel.vue';
 import PreviewPanel from './components/PreviewPanel.vue';
+import { useAuth } from './auth';
+
+// Estado da autenticação do usuário
+const { state } = useAuth();
 
 // Estado inicial com um bloco de início
 const blocks = ref<Block[]>([
@@ -359,32 +363,115 @@ function startResize(event: MouseEvent) {
 </script>
 
 <template>
-  <div class="app">
-    <!-- Toolbar superior com controles principais -->
-    <header class="toolbar">
-      <div class="toolbar-left">
-        <h1>📚 Editor de Chatbot Pedagógico</h1>
-      </div>
+  <!-- BLOQUEIA O APP ATÉ SABER O STATUS -->
+  <div v-if="!state.ready">
+    Carregando...
+  </div>
 
-      <div class="toolbar-center">
-        <label>Zoom:</label>
-        <input
-          type="range"
-          v-model.number="zoom"
-          min="25"
-          max="150"
-          step="5"
-        />
-      </div>
+  <!-- LIBERA O APP SOMENTE DEPOIS -->
+  <div v-else>
+    <div class="app">
+      <!-- Toolbar superior com controles principais -->
+      <header class="toolbar">
+        <div class="toolbar-left">
+          <h1>📚 Editor de Chatbot Pedagógico</h1>
+        </div>
 
-      <div class="toolbar-right">
-        <div class="new-block-wrapper" @click.stop>
-          <button @click="showNewBlockMenu = !showNewBlockMenu" class="btn-primary">
-            ➕ Novo Bloco
-          </button>
+        <div class="toolbar-center">
+          <label>Zoom:</label>
+          <input
+            type="range"
+            v-model.number="zoom"
+            min="25"
+            max="150"
+            step="5"
+          />
+        </div>
 
-          <!-- Menu dropdown para criar novos blocos -->
-          <div v-if="showNewBlockMenu" class="block-menu" @click.stop>
+        <div class="toolbar-right">
+          <div class="new-block-wrapper" @click.stop>
+            <button @click="showNewBlockMenu = !showNewBlockMenu" class="btn-primary">
+              ➕ Novo Bloco
+            </button>
+
+            <!-- Menu dropdown para criar novos blocos -->
+            <div v-if="showNewBlockMenu" class="block-menu" @click.stop>
+              <button @click="createBlock('message')" class="block-menu-item">
+                <span class="block-icon" style="background: #3b82f6;">💬</span>
+                Mensagem
+              </button>
+              <button @click="createBlock('openQuestion')" class="block-menu-item">
+                <span class="block-icon" style="background: #10b981;">❓</span>
+                Pergunta Aberta
+              </button>
+              <button @click="createBlock('choiceQuestion')" class="block-menu-item">
+                <span class="block-icon" style="background: #f59e0b;">📊</span>
+                Múltipla Escolha
+              </button>
+              <button @click="createBlock('condition')" class="block-menu-item">
+                <span class="block-icon" style="background: #8b5cf6;">⚙️</span>
+                Condicional
+              </button>
+              <button @click="createBlock('setVariable')" class="block-menu-item">
+                <span class="block-icon" style="background: #06b6d4;">📝</span>
+                Definir Variável
+              </button>
+              <button @click="createBlock('math')" class="block-menu-item">
+                <span class="block-icon" style="background: #f97316;">🔢</span>
+                Operação Matemática
+              </button>
+              <button @click="createBlock('image')" class="block-menu-item">
+                <span class="block-icon" style="background: #ec4899;">🖼️</span>
+                Imagem
+              </button>
+              <button @click="createBlock('end')" class="block-menu-item">
+                <span class="block-icon" style="background: #ef4444;">✅</span>
+                Fim da Conversa
+              </button>
+            </div>
+          </div>
+
+          <button @click="importJSON" class="btn-secondary">📂 Importar</button>
+          <button @click="viewJSON" class="btn-secondary">👁️ Ver JSON</button>
+          <button @click="exportJSON" class="btn-secondary">💾 Exportar</button>
+
+          <p v-if="state.loggedIn">
+            Olá, {{ state.name }}
+          </p>
+          <p v-else>
+            Você não está logado.
+          </p>
+
+        </div>
+      </header>
+
+      <!-- Área principal com canvas e painel lateral -->
+      <div class="main-content">
+        <!-- Canvas onde os blocos são desenhados e conectados -->
+        <div class="canvas-area" v-show="!isPreviewFullscreen" @click="closeContextMenu">
+          <Canvas
+            :blocks="blocks"
+            :connections="connections"
+            :selected-block-id="selectedBlockId"
+            :zoom="zoom"
+            @update:selected-block-id="selectedBlockId = $event"
+            @update:blocks="blocks = $event"
+            @update:connections="connections = $event"
+            @update:zoom="zoom = $event"
+            @context-menu="handleCanvasContextMenu"
+            @block-context-menu="handleBlockContextMenu"
+          />
+
+          <!-- Menu de contexto (botão direito) -->
+          <div
+            v-if="showContextMenu && contextMenuPosition"
+            class="context-menu"
+            :style="{
+              left: contextMenuPosition.screenX + 'px',
+              top: contextMenuPosition.screenY + 'px'
+            }"
+            @click.stop
+          >
             <button @click="createBlock('message')" class="block-menu-item">
               <span class="block-icon" style="background: #3b82f6;">💬</span>
               Mensagem
@@ -417,156 +504,89 @@ function startResize(event: MouseEvent) {
               <span class="block-icon" style="background: #ef4444;">✅</span>
               Fim da Conversa
             </button>
+            <button v-if="hasCopiedBlock" @click="pasteBlock" class="block-menu-item paste-item">
+              <span class="block-icon" style="background: #6366f1;">📋</span>
+              Colar Bloco
+            </button>
           </div>
         </div>
 
-        <button @click="importJSON" class="btn-secondary">📂 Importar</button>
-        <button @click="viewJSON" class="btn-secondary">👁️ Ver JSON</button>
-        <button @click="exportJSON" class="btn-secondary">💾 Exportar</button>
-      </div>
-    </header>
-
-    <!-- Área principal com canvas e painel lateral -->
-    <div class="main-content">
-      <!-- Canvas onde os blocos são desenhados e conectados -->
-      <div class="canvas-area" v-show="!isPreviewFullscreen" @click="closeContextMenu">
-        <Canvas
-          :blocks="blocks"
-          :connections="connections"
-          :selected-block-id="selectedBlockId"
-          :zoom="zoom"
-          @update:selected-block-id="selectedBlockId = $event"
-          @update:blocks="blocks = $event"
-          @update:connections="connections = $event"
-          @update:zoom="zoom = $event"
-          @context-menu="handleCanvasContextMenu"
-          @block-context-menu="handleBlockContextMenu"
-        />
-
-        <!-- Menu de contexto (botão direito) -->
+        <!-- Menu de contexto do bloco (botão direito no bloco) -->
         <div
-          v-if="showContextMenu && contextMenuPosition"
-          class="context-menu"
+          v-if="showBlockContextMenu && blockContextMenuPosition"
+          class="context-menu block-context-menu"
           :style="{
-            left: contextMenuPosition.screenX + 'px',
-            top: contextMenuPosition.screenY + 'px'
+            left: blockContextMenuPosition.screenX + 'px',
+            top: blockContextMenuPosition.screenY + 'px'
           }"
           @click.stop
         >
-          <button @click="createBlock('message')" class="block-menu-item">
-            <span class="block-icon" style="background: #3b82f6;">💬</span>
-            Mensagem
+          <button @click="duplicateBlock" class="context-menu-item">
+            <span>⚡</span>
+            Duplicar
           </button>
-          <button @click="createBlock('openQuestion')" class="block-menu-item">
-            <span class="block-icon" style="background: #10b981;">❓</span>
-            Pergunta Aberta
+          <button @click="copyBlock" class="context-menu-item">
+            <span>📋</span>
+            Copiar
           </button>
-          <button @click="createBlock('choiceQuestion')" class="block-menu-item">
-            <span class="block-icon" style="background: #f59e0b;">📊</span>
-            Múltipla Escolha
-          </button>
-          <button @click="createBlock('condition')" class="block-menu-item">
-            <span class="block-icon" style="background: #8b5cf6;">⚙️</span>
-            Condicional
-          </button>
-          <button @click="createBlock('setVariable')" class="block-menu-item">
-            <span class="block-icon" style="background: #06b6d4;">📝</span>
-            Definir Variável
-          </button>
-          <button @click="createBlock('math')" class="block-menu-item">
-            <span class="block-icon" style="background: #f97316;">🔢</span>
-            Operação Matemática
-          </button>
-          <button @click="createBlock('image')" class="block-menu-item">
-            <span class="block-icon" style="background: #ec4899;">🖼️</span>
-            Imagem
-          </button>
-          <button @click="createBlock('end')" class="block-menu-item">
-            <span class="block-icon" style="background: #ef4444;">✅</span>
-            Fim da Conversa
-          </button>
-          <button v-if="hasCopiedBlock" @click="pasteBlock" class="block-menu-item paste-item">
-            <span class="block-icon" style="background: #6366f1;">📋</span>
-            Colar Bloco
+          <button @click="deleteBlockFromMenu" class="context-menu-item delete">
+            <span>🗑️</span>
+            Deletar
           </button>
         </div>
+
+        <!-- Painel lateral com propriedades, variáveis e preview -->
+        <aside class="side-panel" :class="{ 'fullscreen': isPreviewFullscreen }" :style="{ width: isPreviewFullscreen ? '100%' : `${sidePanelWidth}px` }">
+          <!-- Resize handle -->
+          <div v-if="!isPreviewFullscreen" class="resize-handle" @mousedown="startResize"></div>
+
+          <div class="tabs">
+            <button
+              :class="['tab', { active: activeTab === 'properties' }]"
+              @click="activeTab = 'properties'"
+            >
+              🔧 Bloco
+            </button>
+            <button
+              :class="['tab', { active: activeTab === 'variables' }]"
+              @click="activeTab = 'variables'"
+            >
+              🔢 Variáveis
+            </button>
+            <button
+              :class="['tab', { active: activeTab === 'preview' }]"
+              @click="activeTab = 'preview'"
+            >
+              👁️ Preview
+            </button>
+          </div>
+
+          <div class="tab-content">
+            <PropertiesPanel
+              v-show="activeTab === 'properties'"
+              :block="selectedBlock"
+              :variables="variables"
+              @update:block="updateBlock"
+            />
+
+            <VariablesPanel
+              v-show="activeTab === 'variables'"
+              :variables="variables"
+              @update:variables="variables = $event"
+              @add-variable="addVariable"
+              @remove-variable="removeVariable"
+            />
+
+            <PreviewPanel
+              v-show="activeTab === 'preview'"
+              :blocks="blocks"
+              :variables="variables"
+              @update:variables="variables = $event"
+              @toggle-fullscreen="togglePreviewFullscreen"
+            />
+          </div>
+        </aside>
       </div>
-
-      <!-- Menu de contexto do bloco (botão direito no bloco) -->
-      <div
-        v-if="showBlockContextMenu && blockContextMenuPosition"
-        class="context-menu block-context-menu"
-        :style="{
-          left: blockContextMenuPosition.screenX + 'px',
-          top: blockContextMenuPosition.screenY + 'px'
-        }"
-        @click.stop
-      >
-        <button @click="duplicateBlock" class="context-menu-item">
-          <span>⚡</span>
-          Duplicar
-        </button>
-        <button @click="copyBlock" class="context-menu-item">
-          <span>📋</span>
-          Copiar
-        </button>
-        <button @click="deleteBlockFromMenu" class="context-menu-item delete">
-          <span>🗑️</span>
-          Deletar
-        </button>
-      </div>
-
-      <!-- Painel lateral com propriedades, variáveis e preview -->
-      <aside class="side-panel" :class="{ 'fullscreen': isPreviewFullscreen }" :style="{ width: isPreviewFullscreen ? '100%' : `${sidePanelWidth}px` }">
-        <!-- Resize handle -->
-        <div v-if="!isPreviewFullscreen" class="resize-handle" @mousedown="startResize"></div>
-
-        <div class="tabs">
-          <button
-            :class="['tab', { active: activeTab === 'properties' }]"
-            @click="activeTab = 'properties'"
-          >
-            🔧 Bloco
-          </button>
-          <button
-            :class="['tab', { active: activeTab === 'variables' }]"
-            @click="activeTab = 'variables'"
-          >
-            🔢 Variáveis
-          </button>
-          <button
-            :class="['tab', { active: activeTab === 'preview' }]"
-            @click="activeTab = 'preview'"
-          >
-            👁️ Preview
-          </button>
-        </div>
-
-        <div class="tab-content">
-          <PropertiesPanel
-            v-show="activeTab === 'properties'"
-            :block="selectedBlock"
-            :variables="variables"
-            @update:block="updateBlock"
-          />
-
-          <VariablesPanel
-            v-show="activeTab === 'variables'"
-            :variables="variables"
-            @update:variables="variables = $event"
-            @add-variable="addVariable"
-            @remove-variable="removeVariable"
-          />
-
-          <PreviewPanel
-            v-show="activeTab === 'preview'"
-            :blocks="blocks"
-            :variables="variables"
-            @update:variables="variables = $event"
-            @toggle-fullscreen="togglePreviewFullscreen"
-          />
-        </div>
-      </aside>
     </div>
   </div>
 </template>
