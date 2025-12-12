@@ -15,10 +15,11 @@ import Canvas from './components/Canvas.vue';
 import PropertiesPanel from './components/PropertiesPanel.vue';
 import VariablesPanel from './components/VariablesPanel.vue';
 import PreviewPanel from './components/PreviewPanel.vue';
-import { useAuth } from './auth';
+// test gp
+// import { useAuth } from './auth';
 
 // Estado da autenticação do usuário
-const { state } = useAuth();
+// const { state } = useAuth();
 
 // Estado inicial com um bloco de início
 const blocks = ref<Block[]>([
@@ -363,13 +364,18 @@ function startResize(event: MouseEvent) {
 </script>
 
 <template>
+  
   <!-- BLOQUEIA O APP ATÉ SABER O STATUS -->
+  <!-- test gp
   <div v-if="!state.ready">
     Carregando...
   </div>
+  -->
 
   <!-- LIBERA O APP SOMENTE DEPOIS -->
+  <!-- test gp
   <div v-else>
+  -->
     <div class="app">
       <!-- Toolbar superior com controles principais -->
       <header class="toolbar">
@@ -435,12 +441,14 @@ function startResize(event: MouseEvent) {
           <button @click="viewJSON" class="btn-secondary">👁️ Ver JSON</button>
           <button @click="exportJSON" class="btn-secondary">💾 Exportar</button>
 
+          <!-- test gp
           <p v-if="state.loggedIn">
             Olá, {{ state.name }}
           </p>
           <p v-else>
             Você não está logado.
           </p>
+          -->
 
         </div>
       </header>
@@ -588,7 +596,9 @@ function startResize(event: MouseEvent) {
         </aside>
       </div>
     </div>
+  <!-- test gp
   </div>
+  -->
 </template>
 
 <style>
