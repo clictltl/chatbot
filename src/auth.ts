@@ -17,6 +17,16 @@ const state = reactive({
 });
 
 export async function checkLogin(): Promise<MeResponse> {
+  const isWP = typeof (window as any).CLIC_CHATBOT !== 'undefined';
+
+  // --- 1. Se NÃO estiver no WordPress, app roda normalmente ---
+  if (!isWP) {
+    state.ready = true;
+    state.loggedIn = false;
+    return { logged_in: false };
+  }
+
+  // --- 2. Está no WordPress: seguir fluxo normal ---
   const root = (window as any).CLIC_CHATBOT?.rest_root ?? '/wp-json/clic-chatbot/v1/';
   const nonce = (window as any).CLIC_CHATBOT?.nonce ?? '';
 
