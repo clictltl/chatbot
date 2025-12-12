@@ -5,7 +5,7 @@ import vue from '@vitejs/plugin-vue'
 export default defineConfig(({ mode }) => ({
   plugins: [vue()],
   // Github Pages
-  base: mode === 'production' ? '/chatbot/' : './',
+  base: mode === 'production' ? 'chatbot' : './',
   // Site CLIC
   // base: mode === 'production' ? '' : './',
   build: {
