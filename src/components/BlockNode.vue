@@ -159,11 +159,16 @@ function handleDelete(event: MouseEvent) {
       </div>
 
       <!-- Visualização para math -->
-      <div v-if="block.type === 'math'" class="math-operation">
+       <div v-if="block.type === 'math'" class="math-operation">
+          <span class="var-name">{{ block.variableName || '?' }}</span>
+          <span class="math-op">{{ ` ${block.mathOperation || '+'} ` }}</span>
+          <span class="var-value">{{ block.mathValue || '?' }}</span>
+       </div>
+      <!-- <div v-if="block.type === 'math'" class="math-operation">
         <span class="var-name">{{ block.variableName || '?' }}</span>
         <span class="math-op">{{ block.mathOperation || '+' }}=</span>
         <span class="var-value">{{ block.mathValue || '?' }}</span>
-      </div>
+      </div> -->
 
       <!-- Visualização para image -->
       <div v-if="block.type === 'image'" class="image-preview-block">
