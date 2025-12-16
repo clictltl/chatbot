@@ -1,0 +1,15 @@
+export {};
+
+declare global {
+  interface Window {
+    CLIC_AUTH?: {
+      rest_root: string;
+      nonce: string;
+      logged_in: boolean;
+      logout_url: string;
+      version?: string;
+      // campos extras podem existir via filtros
+      [key: string]: any;
+    };
+  }
+}

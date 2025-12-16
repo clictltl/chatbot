@@ -5,6 +5,8 @@ type MeResponse = {
   id?: number;
   name?: string;
   email?: string;
+  // campos extras podem existir no futuro
+  [key: string]: any;
 };
 
 const state = reactive({
@@ -17,9 +19,10 @@ const state = reactive({
 });
 
 export async function checkLogin(): Promise<MeResponse> {
-  const isWP = typeof (window as any).CLIC_CHATBOT !== 'undefined';
+  const auth = typeof window !== 'undefined' ? window.CLIC_AUTH : undefined;
+  const isWP = !!auth;
 
-  // --- 1. Se NÃO estiver no WordPress, app roda normalmente ---
+  // --- 1. Fora do WordPress (GitHub Pages) ---
   if (!isWP) {
     state.ready = true;
     state.loggedIn = false;
@@ -27,8 +30,8 @@ export async function checkLogin(): Promise<MeResponse> {
   }
 
   // --- 2. Está no WordPress: seguir fluxo normal ---
-  const root = (window as any).CLIC_CHATBOT?.rest_root ?? '/wp-json/clic-chatbot/v1/';
-  const nonce = (window as any).CLIC_CHATBOT?.nonce ?? '';
+  const root = auth.rest_root;
+  const nonce = auth.nonce;
 
   try {
     const res = await fetch(root + 'me', {
@@ -36,17 +39,18 @@ export async function checkLogin(): Promise<MeResponse> {
       credentials: 'include',
       headers: {
         'Accept': 'application/json',
-        'X-WP-Nonce': nonce  // ← ESSENCIAL
-      }
+        'X-WP-Nonce': nonce, // ESSENCIAL
+      },
     });
 
     if (!res.ok) {
       state.error = `HTTP ${res.status}`;
       state.ready = true;
+      state.loggedIn = false;
       return { logged_in: false };
     }
 
-    const data = await res.json() as MeResponse;
+    const data = (await res.json()) as MeResponse;
 
     state.loggedIn = !!data.logged_in;
 
@@ -75,6 +79,6 @@ export async function checkLogin(): Promise<MeResponse> {
 export function useAuth() {
   return {
     state,
-    checkLogin
+    checkLogin,
   };
 }
