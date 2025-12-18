@@ -11,5 +11,10 @@ declare global {
       // campos extras podem existir via filtros
       [key: string]: any;
     };
+
+    CLIC_CHATBOT?: {
+      rest_root: string;
+      [key: string]: any; // se no futuro quiser incluir mais campos
+    };
   }
 }

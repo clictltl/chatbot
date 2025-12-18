@@ -11,12 +11,13 @@
 
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import type { Block, BlockType } from './types/chatbot';
-import { blocks, connections, variables, selectedBlockId, getProjectData, setProjectData } from './editor/projectData';
+import { blocks, connections, variables, selectedBlockId, getProjectData, setProjectData } from './utils/projectData';
 import Canvas from './components/Canvas.vue';
 import PropertiesPanel from './components/PropertiesPanel.vue';
 import VariablesPanel from './components/VariablesPanel.vue';
 import PreviewPanel from './components/PreviewPanel.vue';
 import AuthMenu from './components/AuthMenu.vue';
+import FileMenu from './components/FileMenu.vue';
 
 const zoom = ref(100);
 const activeTab = ref<'properties' | 'variables' | 'preview'>('properties');
@@ -406,6 +407,8 @@ function startResize(event: MouseEvent) {
         <button @click="importJSON" class="btn-secondary">📂 Importar</button>
         <button @click="viewJSON" class="btn-secondary">👁️ Ver JSON</button>
         <button @click="exportJSON" class="btn-secondary">💾 Exportar</button>
+
+        <FileMenu />
 
         <AuthMenu />
 
