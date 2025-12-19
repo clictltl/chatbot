@@ -238,7 +238,8 @@ async function shareProject() {
     }
 
     // link final
-    const shareUrl = window.location.origin + "/meu-site/app/clic-chatbot/?share=" + data.token;
+    const appUrl = window.CLIC_CHATBOT?.app_url ?? "/";
+    const shareUrl = `${appUrl}?share=${data.token}`;
     return shareUrl;
 
   } catch (err: any) {
