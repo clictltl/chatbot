@@ -20,12 +20,14 @@
       <div class="item disabled" v-if="!isWordPress">Salvar como... (apenas no WordPress)</div>
       <div class="item disabled" v-if="!isWordPress">Abrir... (apenas no WordPress)</div>
       <div class="item disabled" v-if="!isWordPress">Excluir... (apenas no WordPress)</div>
+      <div class="item disabled" v-if="!isWordPress">Compartilhar... (apenas no WordPress)</div>
 
       <!-- Ativos no WordPress -->
       <div class="item" v-if="isWordPress" @click="handleMenuClick(saveProject)">Salvar</div>
       <div class="item" v-if="isWordPress" @click="handleMenuClick(() => showSaveAs = true)">Salvar como...</div>
       <div class="item" v-if="isWordPress" @click="handleMenuClick(openList)">Abrir...</div>
       <div class="item" v-if="isWordPress" @click="handleMenuClick(openDeleteModal)">Excluir...</div>
+      <div class="item" v-if="isWordPress" @click="handleMenuClick(openShare)">Compartilhar...</div>
     </div>
 
     <!-- PLACEHOLDERS dos modais -->
@@ -46,6 +48,8 @@
 
     <DeleteProjectModal v-if="showDelete" @close="showDelete = false" @deleted="handleDeleted"/>
 
+    <ShareModal v-if="showShare" @close="showShare = false"/>
+
   </div>
 </template>
 
@@ -55,6 +59,7 @@ import { useProjects } from '../utils/useProjects';
 import { setProjectData } from '../utils/projectData';
 import OpenProjectModal from './OpenProjectModal.vue';
 import DeleteProjectModal from './DeleteProjectModal.vue';
+import ShareModal from './ShareModal.vue';
 
 const projects = useProjects();
 const { currentProjectId, currentProjectName, error } = toRefs(projects);
@@ -64,6 +69,7 @@ const showSaveAs = ref(false);
 const showOpen = ref(false);
 const showDelete = ref(false);
 const saveAsName = ref("");
+const showShare = ref(false);
 
 // Detecta WordPress
 const isWordPress =
@@ -155,6 +161,13 @@ function handleDeleted() {
   showDelete.value = false;
 }
 
+// ----------------------------------------------------------------------
+// Compartilhar...
+// ----------------------------------------------------------------------
+function openShare() {
+  showShare.value = true;
+  open.value = false; // fecha menu
+}
 </script>
 
 <style scoped>

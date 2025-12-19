@@ -203,6 +203,53 @@ async function deleteProject(id: number) {
 
 /**
  * ---------------------------------------------------
+ * COMPARTILHAR
+ * ---------------------------------------------------
+ */
+async function shareProject() {
+  error.value = null;
+
+  // não faz sentido compartilhar sem projeto salvo
+  if (!currentProjectId.value) {
+    error.value = "PROJECT_NOT_SAVED";
+    return null;
+  }
+
+  const body = {
+    project_id: currentProjectId.value
+  };
+
+  try {
+    const res = await fetch(restRoot + 'share', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-WP-Nonce': nonce
+      },
+      body: JSON.stringify(body)
+    });
+
+    const data = await res.json();
+
+    if (!data.success) {
+      error.value = data.error || "UNKNOWN_ERROR";
+      return null;
+    }
+
+    // link final
+    const shareUrl = window.location.origin + "/meu-site/app/clic-chatbot/?share=" + data.token;
+    return shareUrl;
+
+  } catch (err: any) {
+    error.value = err.message;
+    return null;
+  }
+}
+
+
+/**
+ * ---------------------------------------------------
  * EXPORTAR SINGLETON
  * ---------------------------------------------------
  */
@@ -218,6 +265,7 @@ const projectsStore = {
   saveProjectAs,
   loadProject,
   deleteProject,
+  shareProject,
 };
 
 export function useProjects() {
