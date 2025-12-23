@@ -238,8 +238,9 @@ async function shareProject() {
     }
 
     // link final
-    const appUrl = window.CLIC_CHATBOT?.app_url ?? "/";
-    const shareUrl = `${appUrl}?share=${data.token}`;
+    const shareUrl =
+      data.share_url ??
+      `${window.CLIC_CHATBOT?.app_url ?? "/"}?share=${data.token}`;
     return shareUrl;
 
   } catch (err: any) {

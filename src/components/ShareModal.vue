@@ -5,7 +5,11 @@
     <div class="content">
       <h3>Compartilhar projeto</h3>
 
-      <div v-if="!shareUrl">
+      <div v-if="error">
+        <p class="error">Erro: {{ error }}</p>
+      </div>
+
+      <div v-else-if="!shareUrl">
         <p>Gerando link de compartilhamento...</p>
       </div>
 
@@ -28,10 +32,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, toRefs, onMounted } from 'vue';
 import { useProjects } from '../utils/useProjects';
 
 const projects = useProjects();
+const { error } = toRefs(projects);
 const shareUrl = ref<string | null>(null);
 
 onMounted(async () => {
@@ -84,5 +89,10 @@ function copyToClipboard() {
 
 .close-btn {
   margin-top: 1rem;
+}
+
+.error {
+  color: red;
+  margin-bottom: 12px;
 }
 </style>
