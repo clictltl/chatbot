@@ -91,6 +91,12 @@ function closeModal() {
   error.value = '';
 }
 
+const ERROR_MESSAGES: Record<string, string> = {
+  'MISSING_CREDENTIALS': 'Preencha usuário e senha.',
+  'LOGIN_FAILED': 'Usuário ou senha incorretos.',
+  'TOO_MANY_ATTEMPTS': 'Muitas tentativas. Aguarde alguns minutos.'
+}
+
 // Função de login
 async function submitLogin() {
   error.value = '';
@@ -125,7 +131,7 @@ async function submitLogin() {
       return;
     }
 
-    error.value = 'Login falhou. Verifique usuário e senha.';
+    error.value = ERROR_MESSAGES[data.error] || 'Erro ao fazer login.'
   } catch (err: any) {
     error.value = err?.message || 'Erro inesperado';
   } finally {
