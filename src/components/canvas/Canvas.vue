@@ -11,7 +11,7 @@
  */
 
 import { ref, computed, watch, onMounted, nextTick } from 'vue';
-import type { Block, Connection } from '../types/chatbot';
+import type { Block, Connection } from '@/types/chatbot';
 import BlockNode from './BlockNode.vue';
 
 const props = defineProps<{
@@ -31,7 +31,6 @@ const emit = defineEmits<{
 }>();
 
 const canvasRef = ref<HTMLDivElement | null>(null);
-const svgRef = ref<SVGSVGElement | null>(null);
 
 // Estado do canvas
 const panOffset = ref({ x: 0, y: 0 });

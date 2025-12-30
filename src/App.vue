@@ -10,14 +10,14 @@
  */
 
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import type { Block, BlockType } from './types/chatbot';
-import { blocks, connections, variables, selectedBlockId, getProjectData, setProjectData } from './utils/projectData';
-import Canvas from './components/Canvas.vue';
-import PropertiesPanel from './components/PropertiesPanel.vue';
-import VariablesPanel from './components/VariablesPanel.vue';
-import PreviewPanel from './components/PreviewPanel.vue';
-import AuthMenu from './components/AuthMenu.vue';
-import FileMenu from './components/FileMenu.vue';
+import type { Block, BlockType } from '@/types/chatbot';
+import { blocks, connections, variables, selectedBlockId, getProjectData, setProjectData } from '@/utils/projectData';
+import Canvas from '@/components/canvas/Canvas.vue';
+import PropertiesPanel from '@/components/panels/PropertiesPanel.vue';
+import VariablesPanel from '@/components/panels/VariablesPanel.vue';
+import PreviewPanel from '@/components/panels/PreviewPanel.vue';
+import AuthMenu from '@/components/layout/AuthMenu.vue';
+import FileMenu from '@/components/layout/FileMenu.vue';
 
 const zoom = ref(100);
 const activeTab = ref<'properties' | 'variables' | 'preview'>('properties');

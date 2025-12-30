@@ -55,11 +55,11 @@
 
 <script setup lang="ts">
 import { ref, toRefs } from 'vue';
-import { useProjects } from '../utils/useProjects';
-import { setProjectData } from '../utils/projectData';
-import OpenProjectModal from './OpenProjectModal.vue';
-import DeleteProjectModal from './DeleteProjectModal.vue';
-import ShareModal from './ShareModal.vue';
+import { useProjects } from '@/utils/useProjects';
+import { setProjectData } from '@/utils/projectData';
+import OpenProjectModal from '@/components/modals/OpenProjectModal.vue';
+import DeleteProjectModal from '@/components/modals/DeleteProjectModal.vue';
+import ShareModal from '@/components/modals/ShareModal.vue';
 
 const projects = useProjects();
 const { currentProjectId, currentProjectName, error } = toRefs(projects);

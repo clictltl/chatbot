@@ -34,7 +34,7 @@
 
 <script setup lang="ts">
 import { toRefs } from 'vue';
-import { useProjects } from '../utils/useProjects';
+import { useProjects } from '@/utils/useProjects';
 
 /**
  * Tipagem do item retornado por /list

@@ -54,9 +54,9 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import { useAuth } from '../auth';
-import { getProjectData } from '../utils/projectData';
-import { decodeHtml } from '../utils/decodeHtml';
+import { useAuth } from '@/auth';
+import { getProjectData } from '@/utils/projectData';
+import { decodeHtml } from '@/utils/decodeHtml';
 
 
 // Estado auth (singleton)

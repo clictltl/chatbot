@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import type { Variable } from '../types/chatbot';
+import type { Variable } from '@/types/chatbot';
 
 const props = defineProps<{
   variables: Record<string, Variable>;

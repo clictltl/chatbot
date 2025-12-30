@@ -6,7 +6,7 @@
  */
 
 import { computed } from 'vue';
-import type { Block } from '../types/chatbot';
+import type { Block } from '@/types/chatbot';
 
 const props = defineProps<{
   block: Block;

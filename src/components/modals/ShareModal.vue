@@ -33,7 +33,7 @@
 
 <script setup lang="ts">
 import { ref, toRefs, onMounted } from 'vue';
-import { useProjects } from '../utils/useProjects';
+import { useProjects } from '@/utils/useProjects';
 
 const projects = useProjects();
 const { error } = toRefs(projects);

@@ -15,8 +15,8 @@
  */
 
 import { ref, nextTick } from 'vue';
-import type { Block, Variable, ChatMessage } from '../types/chatbot';
-import { interpolateText, evaluateCondition } from '../utils/interpolation';
+import type { Block, Variable, ChatMessage } from '@/types/chatbot';
+import { interpolateText, evaluateCondition } from '@/utils/interpolation';
 
 const props = defineProps<{
   blocks: Block[];
