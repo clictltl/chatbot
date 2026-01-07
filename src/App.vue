@@ -9,7 +9,7 @@
  * - variables: Objeto com as variáveis disponíveis no chatbot
  */
 
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import type { Block, BlockType } from '@/types/chatbot';
 import { blocks, connections, variables, selectedBlockId, getProjectData, setProjectData } from '@/utils/projectData';
 import Canvas from '@/components/canvas/Canvas.vue';
@@ -31,6 +31,8 @@ const showBlockContextMenu = ref(false);
 const blockContextMenuPosition = ref<{ x: number; y: number; screenX: number; screenY: number } | null>(null);
 const contextMenuBlockId = ref<string | null>(null);
 const hasCopiedBlock = ref(false);
+const propertiesPanelRef = ref<InstanceType<typeof PropertiesPanel> | null>(null);
+
 
 // Retorna o bloco atualmente selecionado
 const selectedBlock = computed(() => {
@@ -134,6 +136,17 @@ function addVariable(name: string, type: 'string' | 'number') {
     value: type === 'number' ? 0 : ''
   };
 }
+
+async function handleFocusBlockEditor() {
+  activeTab.value = 'properties';
+
+  // espera a aba renderizar + textarea existir
+  await nextTick();
+  await nextTick();
+
+  propertiesPanelRef.value?.focusContent?.();
+}
+
 
 // Remove uma variável do chatbot
 function removeVariable(name: string) {
@@ -426,6 +439,7 @@ function startResize(event: MouseEvent) {
           :zoom="zoom"
           @update:selected-block-id="selectedBlockId = $event"
           @update:blocks="blocks = $event"
+          @focus-block-editor="handleFocusBlockEditor"
           @update:connections="connections = $event"
           @update:zoom="zoom = $event"
           @context-menu="handleCanvasContextMenu"
@@ -533,6 +547,7 @@ function startResize(event: MouseEvent) {
 
         <div class="tab-content">
           <PropertiesPanel
+            ref="propertiesPanelRef"
             v-show="activeTab === 'properties'"
             :block="selectedBlock"
             :variables="variables"

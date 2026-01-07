@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, nextTick } from 'vue';
 import type { Block } from '@/types/chatbot';
 
 const props = defineProps<{
@@ -13,6 +13,8 @@ const emit = defineEmits<{
 
 const localBlock = ref<Block | null>(null);
 const fileInput = ref<HTMLInputElement | null>(null);
+const mainTextareaRef = ref<HTMLTextAreaElement | null>(null);
+
 
 watch(() => props.block, (newBlock) => {
   if (newBlock) {
@@ -96,6 +98,15 @@ function clearImage() {
 function openFileDialog() {
   fileInput.value?.click();
 }
+
+function focusContent() {
+  nextTick(() => {
+    mainTextareaRef.value?.focus();
+  });
+}
+
+defineExpose({ focusContent });
+
 </script>
 
 <template>
@@ -113,6 +124,7 @@ function openFileDialog() {
       <div v-if="localBlock.type !== 'end' && localBlock.type !== 'setVariable' && localBlock.type !== 'math' && localBlock.type !== 'image'" class="property-group">
         <label>{{ localBlock.type === 'message' ? 'Mensagem' : 'Pergunta' }}</label>
         <textarea
+          ref="mainTextareaRef"
           v-model="localBlock.content"
           @input="updateBlock"
           placeholder="Digite o conteúdo..."
@@ -124,6 +136,7 @@ function openFileDialog() {
       <div v-if="localBlock.type === 'end'" class="property-group">
         <label>Mensagem Final</label>
         <textarea
+          ref="mainTextareaRef"
           v-model="localBlock.content"
           @input="updateBlock"
           placeholder="Obrigado por usar o chatbot!"

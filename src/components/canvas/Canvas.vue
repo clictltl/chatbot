@@ -10,7 +10,7 @@
  * - Desenhar setas entre blocos
  */
 
-import { ref, computed, watch, onMounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import type { Block, Connection } from '@/types/chatbot';
 import BlockNode from './BlockNode.vue';
 
@@ -23,6 +23,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:selectedBlockId': [id: string | null];
+   'focus-block-editor': []; // ✅ NOVO EVENTO
   'update:blocks': [blocks: Block[]];
   'update:connections': [connections: Connection[]];
   'update:zoom': [zoom: number];
@@ -36,6 +37,37 @@ const canvasRef = ref<HTMLDivElement | null>(null);
 const panOffset = ref({ x: 0, y: 0 });
 const isPanning = ref(false);
 const panStart = ref({ x: 0, y: 0 });
+
+const lastZoom = ref(props.zoom);
+
+// Quando o zoom veio do Ctrl+Wheel, guardamos a âncora (mouse)
+const wheelZoomAnchor = ref<{ x: number; y: number } | null>(null);
+
+/**
+ * Ajusta panOffset para que o ponto do "mundo" sob (anchorClientX/Y) fique fixo na tela,
+ * mesmo mudando o zoom.
+ */
+function keepPointUnderAnchor(oldZoomPct: number, newZoomPct: number, anchorClientX: number, anchorClientY: number) {
+  const rect = canvasRef.value?.getBoundingClientRect();
+  if (!rect) return;
+
+  const oldZoom = oldZoomPct / 100;
+  const newZoom = newZoomPct / 100;
+
+  // Posição da âncora em coordenadas do canvas (tela, relativa ao canvas)
+  const ax = anchorClientX - rect.left;
+  const ay = anchorClientY - rect.top;
+
+  // Coordenadas do "mundo" (antes do zoom) que estavam sob a âncora
+  const worldX = (ax - panOffset.value.x) / oldZoom;
+  const worldY = (ay - panOffset.value.y) / oldZoom;
+
+  // Atualiza panOffset para manter worldX/worldY sob a mesma âncora após o zoom
+  panOffset.value = {
+    x: ax - worldX * newZoom,
+    y: ay - worldY * newZoom
+  };
+}
 
 // Estado do arraste de blocos
 const draggedBlock = ref<string | null>(null);
@@ -283,8 +315,12 @@ function handleBlockDragStart(blockId: string, event: MouseEvent) {
 function handleBlockSelect(blockId: string) {
   if (!connectingFrom.value) {
     emit('update:selectedBlockId', blockId);
+
+    // ✅ avisa o componente pai para abrir a aba "Bloco" e focar no editor
+    emit('focus-block-editor');
   }
 }
+
 
 // Deletar um bloco
 function handleBlockDelete(blockId: string) {
@@ -709,18 +745,45 @@ function forceUpdate() {
 
 watch(() => [props.blocks, props.connections, props.zoom, panOffset.value], forceUpdate, { deep: true });
 
+watch(
+  () => props.zoom,
+  (newZoom, oldZoom) => {
+    // Se o zoom foi acionado pelo Ctrl+Wheel: ancora no mouse
+    if (wheelZoomAnchor.value) {
+      keepPointUnderAnchor(oldZoom, newZoom, wheelZoomAnchor.value.x, wheelZoomAnchor.value.y);
+      wheelZoomAnchor.value = null;
+      lastZoom.value = newZoom;
+      return;
+    }
+
+    // Caso contrário (slider/toolbar/etc): ancora no centro do canvas
+    const rect = canvasRef.value?.getBoundingClientRect();
+    if (!rect) return;
+
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    keepPointUnderAnchor(oldZoom, newZoom, centerX, centerY);
+    lastZoom.value = newZoom;
+  }
+);
+
 // Handler para zoom com Ctrl + Wheel
 function handleWheel(event: WheelEvent) {
-  if (event.ctrlKey) {
-    event.preventDefault();
+  // se você quiser manter o pan com shift e evitar conflito, pode deixar assim:
+  if (isPanning.value) return;
 
-    // Calcula o novo zoom (zoom está em porcentagem: 25-150)
-    const delta = -event.deltaY * 0.1;
-    const newZoom = Math.max(25, Math.min(150, props.zoom + delta));
+  event.preventDefault();
 
-    // Emite o evento para atualizar o zoom no componente pai
-    emit('update:zoom', newZoom);
-  }
+  // deltaY > 0 geralmente = scroll pra baixo (zoom out)
+  const delta = -event.deltaY * 0.1;
+
+  const newZoom = Math.max(25, Math.min(150, props.zoom + delta));
+
+  // ancora no mouse (mesmo comportamento que você queria)
+  wheelZoomAnchor.value = { x: event.clientX, y: event.clientY };
+
+  emit('update:zoom', newZoom);
 }
 
 onMounted(() => {
@@ -733,6 +796,16 @@ onMounted(() => {
     canvas.addEventListener('wheel', handleWheel, { passive: false });
   }
 });
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleKeyDown);
+
+  const canvas = canvasRef.value;
+  if (canvas) {
+    canvas.removeEventListener('wheel', handleWheel as any);
+  }
+});
+
 </script>
 
 <template>

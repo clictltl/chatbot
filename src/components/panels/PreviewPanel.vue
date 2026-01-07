@@ -40,6 +40,24 @@ const sessionVariables = ref<Record<string, Variable>>({});
 const chatEndRef = ref<HTMLDivElement | null>(null);
 const isRunning = ref(false);
 
+// ✅ Token da sessão: serve para "cancelar" timeouts antigos quando parar/reiniciar
+const runId = ref(0);
+
+// ✅ Para o chat e volta pra tela inicial limpa
+function stopChat() {
+  // invalida callbacks pendentes
+  runId.value++;
+
+  isWaitingForInput.value = false;
+  currentChoices.value = [];
+  currentBlockId.value = null;
+
+  messages.value = [];
+  userInput.value = '';
+
+  isRunning.value = false;
+}
+
 // Inicia uma nova sessão do chatbot
 function startChat() {
   messages.value = [];
@@ -48,6 +66,9 @@ function startChat() {
   isWaitingForInput.value = false;
   currentChoices.value = [];
   isRunning.value = true;
+
+  // ✅ nova sessão
+  runId.value++;
 
   // Copia as variáveis para a sessão atual
   sessionVariables.value = {};
@@ -77,11 +98,16 @@ function processBlock(block: Block) {
     return;
   }
 
+  // ✅ Captura o id da sessão atual para proteger timeouts
+  const myRun = runId.value;
+
   switch (block.type) {
     case 'message':
       // Exibe uma mensagem e continua para o próximo bloco
       addBotMessage(block.content);
       setTimeout(() => {
+        if (!isRunning.value || runId.value !== myRun) return;
+
         if (block.nextBlockId) {
           const nextBlock = props.blocks.find(b => b.id === block.nextBlockId);
           if (nextBlock) {
@@ -117,18 +143,20 @@ function processBlock(block: Block) {
       }
       break;
 
-    case 'condition':
+    case 'condition': {
       // Avalia condições e segue para o bloco correspondente
       let nextBlockId: string | undefined;
 
       if (block.conditions) {
         for (const condition of block.conditions) {
-          if (evaluateCondition(
-            condition.variableName,
-            condition.operator,
-            condition.value,
-            sessionVariables.value
-          )) {
+          if (
+            evaluateCondition(
+              condition.variableName,
+              condition.operator,
+              condition.value,
+              sessionVariables.value
+            )
+          ) {
             nextBlockId = condition.nextBlockId;
             break;
           }
@@ -146,12 +174,12 @@ function processBlock(block: Block) {
           endChat();
         }
       } else {
-        // Nenhuma condição foi satisfeita
         console.warn('Nenhuma condição foi satisfeita no bloco condicional');
         addErrorMessage('(Nenhuma condição satisfeita)');
         endChat();
       }
       break;
+    }
 
     case 'setVariable':
       // Define o valor de uma variável e continua para o próximo bloco
@@ -162,6 +190,8 @@ function processBlock(block: Block) {
       }
 
       setTimeout(() => {
+        if (!isRunning.value || runId.value !== myRun) return;
+
         if (block.nextBlockId) {
           const nextBlock = props.blocks.find(b => b.id === block.nextBlockId);
           if (nextBlock) {
@@ -184,7 +214,6 @@ function processBlock(block: Block) {
         const variable = sessionVariables.value[block.variableName];
         const currentValue = Number(variable.value) || 0;
 
-        // Interpola o valor (pode ser um número fixo ou {{variavel}})
         const interpolatedValue = interpolateText(block.mathValue || '0', sessionVariables.value);
         const operandValue = Number(interpolatedValue) || 0;
 
@@ -209,6 +238,8 @@ function processBlock(block: Block) {
       }
 
       setTimeout(() => {
+        if (!isRunning.value || runId.value !== myRun) return;
+
         if (block.nextBlockId) {
           const nextBlock = props.blocks.find(b => b.id === block.nextBlockId);
           if (nextBlock) {
@@ -225,7 +256,7 @@ function processBlock(block: Block) {
       }, 300);
       break;
 
-    case 'image':
+    case 'image': {
       // Exibe uma imagem e continua para o próximo bloco
       const imageUrl = block.imageData || block.imageUrl;
       if (imageUrl) {
@@ -233,7 +264,10 @@ function processBlock(block: Block) {
       } else {
         addErrorMessage('(Erro: imagem não definida)');
       }
+
       setTimeout(() => {
+        if (!isRunning.value || runId.value !== myRun) return;
+
         if (block.nextBlockId) {
           const nextBlock = props.blocks.find(b => b.id === block.nextBlockId);
           if (nextBlock) {
@@ -249,9 +283,9 @@ function processBlock(block: Block) {
         }
       }, 500);
       break;
+    }
 
     case 'end':
-      // Bloco final da conversa
       if (block.content) {
         addBotMessage(block.content);
       }
@@ -324,7 +358,6 @@ function handleSendMessage() {
           value: input
         };
       }
-      // Sincroniza com as variáveis globais para atualizar a aba de Variáveis
       syncVariablesToParent();
     }
   }
@@ -337,7 +370,12 @@ function handleSendMessage() {
     const nextBlock = props.blocks.find(b => b.id === currentBlock.nextBlockId);
     if (nextBlock) {
       currentBlockId.value = currentBlock.nextBlockId;
-      setTimeout(() => processBlock(nextBlock), 300);
+
+      const myRun = runId.value;
+      setTimeout(() => {
+        if (!isRunning.value || runId.value !== myRun) return;
+        processBlock(nextBlock);
+      }, 300);
     } else {
       console.error(`Bloco de destino não encontrado: ${currentBlock.nextBlockId}`);
       addErrorMessage('(Erro de fluxo: bloco de destino não encontrado)');
@@ -357,7 +395,12 @@ function handleChoiceClick(choice: { id: string; label: string; nextBlockId?: st
     const nextBlock = props.blocks.find(b => b.id === choice.nextBlockId);
     if (nextBlock) {
       currentBlockId.value = choice.nextBlockId;
-      setTimeout(() => processBlock(nextBlock), 300);
+
+      const myRun = runId.value;
+      setTimeout(() => {
+        if (!isRunning.value || runId.value !== myRun) return;
+        processBlock(nextBlock);
+      }, 300);
     } else {
       console.error(`Bloco de destino não encontrado: ${choice.nextBlockId}`);
       addErrorMessage('(Erro de fluxo: bloco de destino não encontrado)');
@@ -406,8 +449,27 @@ function syncVariablesToParent() {
 
 <template>
   <div class="preview-panel">
-    <!-- Botão de expandir/recolher -->
-    <button @click="toggleFullscreen" class="btn-fullscreen" :title="isFullscreen ? 'Sair da tela cheia' : 'Expandir tela cheia'">
+    <!-- ✅ NOVA BARRA (mantendo tudo igual) -->
+    <div class="preview-toolbar">
+      <button class="btn-toolbar btn-run" @click="startChat">
+        ▶️ {{ isRunning ? 'Reiniciar' : 'Iniciar' }}
+      </button>
+
+      <button
+        class="btn-toolbar btn-stop"
+        @click="stopChat"
+        :disabled="!isRunning && messages.length === 0"
+      >
+        ■ Parar
+      </button>
+    </div>
+
+    <!-- Botão de expandir/recolher (mantido) -->
+    <button
+      @click="toggleFullscreen"
+      class="btn-fullscreen"
+      :title="isFullscreen ? 'Sair da tela cheia' : 'Expandir tela cheia'"
+    >
       <span v-if="isFullscreen">✕</span>
       <span v-else>⛶</span>
     </button>
@@ -487,7 +549,57 @@ function syncVariablesToParent() {
   position: relative;
 }
 
-/* Botão de tela cheia */
+/* ✅ Barra nova com botões */
+.preview-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 200;
+
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.btn-toolbar{
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  transition: all 0.2s;
+}
+
+.btn-run{
+  background: #10b981;
+  color: white;
+}
+
+.btn-run:hover{
+  background: #059669;
+  transform: translateY(-1px);
+}
+
+.btn-stop{
+  background: #ef4444;
+  color: white;
+}
+
+.btn-stop:hover{
+  background: #dc2626;
+  transform: translateY(-1px);
+}
+
+.btn-toolbar:disabled{
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Botão de tela cheia (seu original) */
 .btn-fullscreen {
   position: absolute;
   top: 12px;
