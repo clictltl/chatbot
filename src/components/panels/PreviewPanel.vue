@@ -12,6 +12,7 @@
  * - Avalia condições lógicas
  * - Interpola variáveis no texto (ex: {{nome}})
  * - Trata erros de fluxo (blocos não encontrados)
+ * - ✅ Sempre inicia pelo bloco "start" (se existir)
  */
 
 import { ref, nextTick } from 'vue';
@@ -58,7 +59,7 @@ function stopChat() {
   isRunning.value = false;
 }
 
-// Inicia uma nova sessão do chatbot
+// ✅ Inicia uma nova sessão do chatbot SEMPRE pelo bloco start
 function startChat() {
   messages.value = [];
   currentBlockId.value = null;
@@ -79,14 +80,23 @@ function startChat() {
   // Sincroniza valores com as variáveis globais
   syncVariablesToParent();
 
-  // Busca o primeiro bloco para iniciar o fluxo
-  if (props.blocks.length > 0) {
-    // Tenta encontrar o primeiro bloco do tipo 'message' ou usa o primeiro disponível
-    const startBlock = props.blocks.find(b => b.type === 'message') || props.blocks[0];
+  // ✅ Busca o bloco start (sempre!)
+  const startBlock = props.blocks.find(b => b.id === 'start' || b.type === 'start');
+
+  if (startBlock) {
     currentBlockId.value = startBlock.id;
     processBlock(startBlock);
+    return;
+  }
+
+  // fallback: se não existir start por algum motivo
+  if (props.blocks.length > 0) {
+    const fallback = props.blocks[0];
+    currentBlockId.value = fallback.id;
+    processBlock(fallback);
   } else {
     addErrorMessage('Nenhum bloco encontrado. Crie blocos no canvas para começar.');
+    endChat();
   }
 }
 
@@ -102,6 +112,28 @@ function processBlock(block: Block) {
   const myRun = runId.value;
 
   switch (block.type) {
+    // ✅ START: não exibe nada, só encaminha para o nextBlockId atual
+    case 'start':
+      setTimeout(() => {
+        if (!isRunning.value || runId.value !== myRun) return;
+
+        if (block.nextBlockId) {
+          const nextBlock = props.blocks.find(b => b.id === block.nextBlockId);
+          if (nextBlock) {
+            currentBlockId.value = block.nextBlockId;
+            processBlock(nextBlock);
+          } else {
+            console.error(`Bloco de destino não encontrado: ${block.nextBlockId}`);
+            addErrorMessage('(Erro de fluxo: bloco de destino não encontrado)');
+            endChat();
+          }
+        } else {
+          addErrorMessage('(Start sem conexão de saída)');
+          endChat();
+        }
+      }, 0);
+      break;
+
     case 'message':
       // Exibe uma mensagem e continua para o próximo bloco
       addBotMessage(block.content);
@@ -289,6 +321,11 @@ function processBlock(block: Block) {
       if (block.content) {
         addBotMessage(block.content);
       }
+      endChat();
+      break;
+
+    default:
+      addErrorMessage(`(Tipo de bloco não suportado: ${String((block as any).type)})`);
       endChat();
       break;
   }
@@ -489,7 +526,12 @@ function syncVariablesToParent() {
         <div
           v-for="message in messages"
           :key="message.id"
-          :class="['message', message.type === 'image' ? 'message-bot' : (message.type === 'bot' ? 'message-bot' : 'message-user')]"
+          :class="[
+            'message',
+            message.type === 'image'
+              ? 'message-bot'
+              : (message.type === 'bot' ? 'message-bot' : 'message-user')
+          ]"
         >
           <div v-if="message.type === 'image'" class="message-image">
             <img

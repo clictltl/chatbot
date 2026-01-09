@@ -26,6 +26,7 @@ const emit = defineEmits<{
 // Título e ícone do bloco baseado no tipo
 const blockTitle = computed(() => {
   switch (props.block.type) {
+    case "start": return "Início";
     case "message": return "Mensagem";
     case "openQuestion": return "Pergunta Aberta";
     case "choiceQuestion": return "Múltipla Escolha";
@@ -40,6 +41,7 @@ const blockTitle = computed(() => {
 
 const blockIcon = computed(() => {
   switch (props.block.type) {
+    case "start": return "▶️";
     case "message": return "💬";
     case "openQuestion": return "❓";
     case "choiceQuestion": return "📊";
@@ -54,8 +56,9 @@ const blockIcon = computed(() => {
 
 const blockColor = computed(() => {
   switch (props.block.type) {
+    case "start": return "#10b981";
     case "message": return "#3b82f6";
-    case "openQuestion": return "#10b981";
+    case "openQuestion": return "#d97706";
     case "choiceQuestion": return "#f59e0b";
     case "condition": return "#8b5cf6";
     case "setVariable": return "#06b6d4";
@@ -116,7 +119,10 @@ function handleDelete(event: MouseEvent) {
   <div
     :data-block-id="block.id"
     class="block-node"
-    :class="{ selected: isSelected }"
+    :class="[
+      { selected: isSelected },
+      { 'start-node': block.type === 'start' }
+    ]"
     :style="{
       left: `${block.position.x}px`,
       top: `${block.position.y}px`,
@@ -126,90 +132,104 @@ function handleDelete(event: MouseEvent) {
     @click="handleClick"
     @contextmenu="handleContextMenu"
   >
-    <div class="block-header" :style="{ backgroundColor: blockColor }">
-      <span class="block-icon">{{ blockIcon }}</span>
-      <span class="block-title">{{ blockTitle }}</span>
-      <button
-        class="delete-button"
-        @click="handleDelete"
-        @mousedown.stop
-        title="Deletar bloco"
-      >
-        ×
-      </button>
+    <!-- ✅ START (inteiro verde, sem área branca) -->
+    <div v-if="block.type === 'start'" class="start-body" :style="{ backgroundColor: blockColor }">
+      <span class="start-title">Início</span>
     </div>
 
-    <!-- Handle de entrada (vermelho no topo) - todos os blocos têm entrada -->
-    <div
-      :data-handle-id="`${block.id}-input`"
-      :data-block-id="block.id"
-      class="handle input-handle"
-      @mousedown="handleInputMouseDown"
-      title="Handle de entrada"
-    />
+    <!-- ✅ RESTO (layout normal) -->
+    <template v-else>
+      <div class="block-header" :style="{ backgroundColor: blockColor }">
+        <span class="block-icon">{{ blockIcon }}</span>
+        <span class="block-title">{{ blockTitle }}</span>
 
-    <div class="block-content">
-      <p v-if="block.type !== 'setVariable' && block.type !== 'image' && block.type !== 'math'">{{ block.content || 'Sem conteúdo' }}</p>
-
-      <!-- Visualização para setVariable -->
-      <div v-if="block.type === 'setVariable'" class="variable-assignment">
-        <span class="var-name">{{ block.variableName || '?' }}</span>
-        <span class="var-equals">=</span>
-        <span class="var-value">{{ block.variableValue || '?' }}</span>
+        <button
+          v-if="block.id !== 'start'"
+          class="delete-button"
+          @click="handleDelete"
+          @mousedown.stop
+          title="Deletar bloco"
+        >
+          ×
+        </button>
       </div>
 
-      <!-- Visualização para math -->
-       <div v-if="block.type === 'math'" class="math-operation">
+      <!-- Handle de entrada (não aparece no start) -->
+      <div
+        v-if="block.id !== 'start'"
+        :data-handle-id="`${block.id}-input`"
+        :data-block-id="block.id"
+        class="handle input-handle"
+        @mousedown="handleInputMouseDown"
+        title="Handle de entrada"
+      />
+
+      <div class="block-content">
+        <p v-if="block.type !== 'setVariable' && block.type !== 'image' && block.type !== 'math'">
+          {{ block.content || 'Sem conteúdo' }}
+        </p>
+
+        <!-- Visualização para setVariable -->
+        <div v-if="block.type === 'setVariable'" class="variable-assignment">
+          <span class="var-name">{{ block.variableName || '?' }}</span>
+          <span class="var-equals">=</span>
+          <span class="var-value">{{ block.variableValue || '?' }}</span>
+        </div>
+
+        <!-- Visualização para math -->
+        <div v-if="block.type === 'math'" class="math-operation">
           <span class="var-name">{{ block.variableName || '?' }}</span>
           <span class="math-op">{{ ` ${block.mathOperation || '+'} ` }}</span>
           <span class="var-value">{{ block.mathValue || '?' }}</span>
-       </div>
-      <!-- <div v-if="block.type === 'math'" class="math-operation">
-        <span class="var-name">{{ block.variableName || '?' }}</span>
-        <span class="math-op">{{ block.mathOperation || '+' }}=</span>
-        <span class="var-value">{{ block.mathValue || '?' }}</span>
-      </div> -->
+        </div>
 
-      <!-- Visualização para image -->
-      <div v-if="block.type === 'image'" class="image-preview-block">
-        <img v-if="block.imageData || block.imageUrl" :src="block.imageData || block.imageUrl" alt="Preview" />
-        <span v-else class="no-image">Nenhuma imagem definida</span>
-      </div>
-
-      <!-- Opções de múltipla escolha -->
-      <div v-if="block.type === 'choiceQuestion' && block.choices" class="choices">
-        <div v-for="choice in block.choices" :key="choice.id" class="choice-item">
-          <span>{{ choice.label }}</span>
-          <div
-            :data-handle-id="`${block.id}-output-${choice.id}`"
-            :data-block-id="block.id"
-            :data-output-id="choice.id"
-            class="handle output-handle choice-output"
-            @mousedown="handleOutputMouseDown($event, choice.id)"
-            :title="`Conectar '${choice.label}'`"
+        <!-- Visualização para image -->
+        <div v-if="block.type === 'image'" class="image-preview-block">
+          <img
+            v-if="block.imageData || block.imageUrl"
+            :src="block.imageData || block.imageUrl"
+            alt="Preview"
           />
+          <span v-else class="no-image">Nenhuma imagem definida</span>
+        </div>
+
+        <!-- Opções de múltipla escolha -->
+        <div v-if="block.type === 'choiceQuestion' && block.choices" class="choices">
+          <div v-for="choice in block.choices" :key="choice.id" class="choice-item">
+            <span>{{ choice.label }}</span>
+            <div
+              :data-handle-id="`${block.id}-output-${choice.id}`"
+              :data-block-id="block.id"
+              :data-output-id="choice.id"
+              class="handle output-handle choice-output"
+              @mousedown="handleOutputMouseDown($event, choice.id)"
+              :title="`Conectar '${choice.label}'`"
+            />
+          </div>
+        </div>
+
+        <!-- Condições -->
+        <div v-if="block.type === 'condition' && block.conditions" class="conditions">
+          <div v-for="condition in block.conditions" :key="condition.id" class="condition-item">
+            <span>{{ condition.variableName }} {{ condition.operator }} {{ condition.value }}</span>
+            <div
+              :data-handle-id="`${block.id}-output-${condition.id}`"
+              :data-block-id="block.id"
+              :data-output-id="condition.id"
+              class="handle output-handle condition-output"
+              @mousedown="handleOutputMouseDown($event, condition.id)"
+              title="Conectar condição"
+            />
+          </div>
         </div>
       </div>
+    </template>
 
-      <!-- Condições -->
-      <div v-if="block.type === 'condition' && block.conditions" class="conditions">
-        <div v-for="condition in block.conditions" :key="condition.id" class="condition-item">
-          <span>{{ condition.variableName }} {{ condition.operator }} {{ condition.value }}</span>
-          <div
-            :data-handle-id="`${block.id}-output-${condition.id}`"
-            :data-block-id="block.id"
-            :data-output-id="condition.id"
-            class="handle output-handle condition-output"
-            @mousedown="handleOutputMouseDown($event, condition.id)"
-            :title="`Conectar condição`"
-          />
-        </div>
-      </div>
-    </div>
-
-    <!-- Handle de saída principal (verde na direita) - não renderiza para 'end' -->
+    <!-- ✅ Handle de saída principal (verde na direita)
+         - para start: aparece (e é o único handle)
+         - não renderiza para end / choiceQuestion / condition (como já era) -->
     <div
-      v-if="block.type !== 'end' && block.type !== 'choiceQuestion' && block.type !== 'condition'"
+      v-if="block.type === 'start' || (block.type !== 'end' && block.type !== 'choiceQuestion' && block.type !== 'condition')"
       :data-handle-id="`${block.id}-output`"
       :data-block-id="block.id"
       class="handle output-handle main-output"
@@ -228,7 +248,7 @@ function handleDelete(event: MouseEvent) {
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   cursor: move;
-  transition: box-shadow 0.2s, border-color 0.2s;
+  transition: box-shadow 0.2s, border-color 0.2s, background 0.2s;
   user-select: none;
   z-index: 160;
 }
@@ -243,6 +263,32 @@ function handleDelete(event: MouseEvent) {
   box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4);
 }
 
+/* ✅ START: remove branco e deixa tudo verde */
+.start-node {
+  background: #10b981;
+  border-color: #10b981 !important;
+}
+
+.start-body {
+  height: 72px; /* ajuste se quiser mais alto/baixo */
+  width: 100%;
+  border-radius: 8px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: white;
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 0.2px;
+}
+
+.start-title {
+  line-height: 1;
+}
+
+/* Header normal */
 .block-header {
   padding: 8px 12px;
   border-radius: 6px 6px 0 0;

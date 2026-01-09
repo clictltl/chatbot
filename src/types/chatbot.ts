@@ -6,7 +6,9 @@
  */
 
 // Tipos de blocos disponíveis no chatbot
-export type BlockType = "message" | "openQuestion" | "choiceQuestion" | "condition" | "setVariable" | "math" | "image" | "end";
+export type BlockType = "start" |"message" | "openQuestion" | "choiceQuestion" | "condition" | "setVariable" | "math" | "image" | "end";
+
+
 
 /**
  * BLOCO - Unidade básica do fluxo do chatbot

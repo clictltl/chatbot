@@ -121,7 +121,11 @@ defineExpose({ focusContent });
         <input type="text" :value="localBlock.type" disabled />
       </div>
 
-      <div v-if="localBlock.type !== 'end' && localBlock.type !== 'setVariable' && localBlock.type !== 'math' && localBlock.type !== 'image'" class="property-group">
+      <div v-if="localBlock.type !== 'start'
+  && localBlock.type !== 'end'
+  && localBlock.type !== 'setVariable'
+  && localBlock.type !== 'math'
+  && localBlock.type !== 'image'" class="property-group">
         <label>{{ localBlock.type === 'message' ? 'Mensagem' : 'Pergunta' }}</label>
         <textarea
           ref="mainTextareaRef"

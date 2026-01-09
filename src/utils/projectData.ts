@@ -7,17 +7,54 @@ import type { Block, Connection, Variable } from '../types/chatbot';
  * Deve nascer SEMPRE válido
  */
 
-// Bloco inicial padrão
-const initialBlock: Block = {
-  id: 'block_inicio',
+// IDs fixos para o fluxo inicial
+const START_ID = 'start';
+const FIRST_MESSAGE_ID = 'block_message_1';
+
+// Posições iniciais (lado a lado)
+const START_POSITION = { x: 100, y: 120 };
+const GAP_X = 320;
+const GAP_Y = 60;
+
+// Bloco START (inteiro verde, sem conteúdo)
+const startBlock: Block = {
+  id: START_ID,
+  type: 'start',
+  position: START_POSITION,
+  content: '',  
+  nextBlockId: FIRST_MESSAGE_ID
+};
+
+// Primeiro bloco de mensagem
+const firstMessageBlock: Block = {
+  id: FIRST_MESSAGE_ID,
   type: 'message',
-  position: { x: 100, y: 100 },
+  position: {
+    x: START_POSITION.x + GAP_X,
+    y: START_POSITION.y + GAP_Y
+  },
   content: 'Olá! Bem-vindo ao chatbot.',
   nextBlockId: undefined
 };
 
-export const blocks = ref<Block[]>([initialBlock]);
-export const connections = ref<Connection[]>([]);
+// Conexão visual entre start → mensagem
+const initialConnection: Connection = {
+  id: `conn_${Date.now()}`,
+  fromBlockId: START_ID,
+  fromOutputId: undefined, // saída principal do start
+  toBlockId: FIRST_MESSAGE_ID,
+};
+
+// Estado reativo
+export const blocks = ref<Block[]>([
+  startBlock,
+  firstMessageBlock
+]);
+
+export const connections = ref<Connection[]>([
+  initialConnection
+]);
+
 export const variables = ref<Record<string, Variable>>({});
 export const selectedBlockId = ref<string | null>(null);
 

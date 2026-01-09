@@ -58,6 +58,21 @@ onMounted(() => {
 
   // Adiciona listener para fechar menus ao clicar fora
   document.addEventListener('click', handleDocumentClick);
+
+  // ✅ garante start block
+  const hasStart = blocks.value.some(b => b.type === 'start');
+  if (!hasStart) {
+    const startBlock: Block = {
+      id: 'start',                // id fixo ajuda MUITO
+      type: 'start',
+      position: { x: 80, y: 80 }, // escolha um lugar bom
+      content: '',                // vazio sempre
+      nextBlockId: undefined
+    };
+
+    blocks.value.unshift(startBlock); // coloca no começo
+    selectedBlockId.value = startBlock.id;
+  }
 });
 
 // Remove listener ao desmontar
@@ -67,6 +82,7 @@ onUnmounted(() => {
 
 // Cria um novo bloco no canvas
 function createBlock(type: BlockType) {
+  if (type === 'start') return; // ✅ start não é criado pelo menu
   const newBlock: Block = {
     id: `block_${Date.now()}`,
     type,
@@ -99,6 +115,8 @@ function handleDocumentClick(event: MouseEvent) {
 // Retorna o conteúdo padrão baseado no tipo do bloco
 function getDefaultContent(type: BlockType): string {
   switch (type) {
+    case 'start':
+      return '';
     case 'message':
       return 'Olá! Bem-vindo ao chatbot.';
     case 'openQuestion':
@@ -183,6 +201,17 @@ function importJSON() {
         const data = JSON.parse(event.target?.result as string);
 
         setProjectData(data);
+
+        const hasStart = blocks.value.some(b => b.type === 'start');
+        if (!hasStart) {
+            blocks.value.unshift({
+            id: 'start',
+            type: 'start',
+            position: { x: 80, y: 80 },
+            content: '',
+            nextBlockId: undefined
+          });
+        }
 
         alert('Projeto carregado com sucesso!');
       } catch (error) {
@@ -271,9 +300,14 @@ function handleBlockContextMenu(blockId: string, position: { x: number; y: numbe
 function duplicateBlock() {
   if (!contextMenuBlockId.value) return;
 
+  // ✅ nunca duplicar o start
+  if (contextMenuBlockId.value === 'start') {
+    closeContextMenu();
+    return;
+  }
+
   const blockToDuplicate = blocks.value.find(b => b.id === contextMenuBlockId.value);
   if (!blockToDuplicate) return;
-
   const newBlock: Block = {
     ...JSON.parse(JSON.stringify(blockToDuplicate)),
     id: Date.now().toString(),
@@ -289,7 +323,13 @@ function duplicateBlock() {
 
 // Copia um bloco (salva no localStorage)
 function copyBlock() {
-  if (!contextMenuBlockId.value) return;
+   if (!contextMenuBlockId.value) return;
+
+  // ✅ nunca copiar o start
+  if (contextMenuBlockId.value === 'start') {
+    closeContextMenu();
+    return;
+  }
 
   const blockToCopy = blocks.value.find(b => b.id === contextMenuBlockId.value);
   if (!blockToCopy) return;
@@ -320,6 +360,12 @@ function pasteBlock() {
 // Deleta um bloco do menu de contexto
 function deleteBlockFromMenu() {
   if (!contextMenuBlockId.value) return;
+
+  // ✅ nunca deletar o start
+  if (contextMenuBlockId.value === 'start') {
+    closeContextMenu();
+    return;
+  }
 
   blocks.value = blocks.value.filter(b => b.id !== contextMenuBlockId.value);
   connections.value = connections.value.filter(
@@ -496,15 +542,16 @@ function startResize(event: MouseEvent) {
       </div>
 
       <!-- Menu de contexto do bloco (botão direito no bloco) -->
-      <div
-        v-if="showBlockContextMenu && blockContextMenuPosition"
-        class="context-menu block-context-menu"
-        :style="{
-          left: blockContextMenuPosition.screenX + 'px',
-          top: blockContextMenuPosition.screenY + 'px'
-        }"
-        @click.stop
-      >
+    <div
+      v-if="showBlockContextMenu && blockContextMenuPosition"
+      class="context-menu block-context-menu"
+      :style="{
+        left: blockContextMenuPosition.screenX + 'px',
+        top: blockContextMenuPosition.screenY + 'px'
+      }"
+      @click.stop
+    >
+      <template v-if="contextMenuBlockId !== 'start'">
         <button @click="duplicateBlock" class="context-menu-item">
           <span>⚡</span>
           Duplicar
@@ -517,7 +564,12 @@ function startResize(event: MouseEvent) {
           <span>🗑️</span>
           Deletar
         </button>
+      </template>
+
+      <div v-else class="context-menu-empty">
+        Sem ações disponíveis
       </div>
+    </div>
 
       <!-- Painel lateral com propriedades, variáveis e preview -->
       <aside class="side-panel" :class="{ 'fullscreen': isPreviewFullscreen }" :style="{ width: isPreviewFullscreen ? '100%' : `${sidePanelWidth}px` }">
@@ -855,5 +907,13 @@ body {
   z-index: 1000;
   min-width: 220px;
   padding: 8px;
+}
+
+.context-menu-empty {
+  padding: 12px 14px;
+  font-size: 13px;
+  color: #6b7280;
+  text-align: center;
+  user-select: none;
 }
 </style>
