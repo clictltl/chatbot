@@ -5,7 +5,7 @@
     <span v-if="!auth.state.ready">Verificando login...</span>
 
     <!-- Usuário não logado -->
-    <button v-else-if="!auth.state.loggedIn" @click="showLogin = true">
+    <button v-else-if="!auth.state.loggedIn" class="login-button" @click="showLogin = true">
       Entrar
     </button>
 
@@ -280,4 +280,32 @@ function logout() {
   right: 0;
   height: 6px;
 }
+
+.login-button {
+  background: #ececec;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 6px 12px;
+
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.login-button:hover {
+  background: #e0e0e0;
+  border-color: #bbb;
+}
+
+.login-button:active {
+  background: #d8d8d8;
+}
+
+.login-button:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.08);
+}
+
 </style>

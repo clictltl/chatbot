@@ -97,3 +97,30 @@ export function setProjectData(data: ProjectData) {
 
   selectedBlockId.value = null;
 }
+
+/**
+ * Reseta o editor para um estado inicial válido
+ * (novo projeto, importação, reset explícito)
+ */
+export function resetProjectData() {
+  blocks.value = [
+    {
+      ...startBlock,
+      position: { ...startBlock.position }
+    },
+    {
+      ...firstMessageBlock,
+      position: { ...firstMessageBlock.position }
+    }
+  ];
+
+  connections.value = [
+    {
+      ...initialConnection,
+      id: `conn_${Date.now()}`
+    }
+  ];
+
+  variables.value = {};
+  selectedBlockId.value = null;
+}
