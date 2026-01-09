@@ -11,7 +11,7 @@
 
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import type { Block, BlockType } from '@/types/chatbot';
-import { blocks, connections, variables, selectedBlockId, getProjectData, setProjectData } from '@/utils/projectData';
+import { blocks, connections, variables, selectedBlockId, setProjectData } from '@/utils/projectData';
 import Canvas from '@/components/canvas/Canvas.vue';
 import PropertiesPanel from '@/components/panels/PropertiesPanel.vue';
 import VariablesPanel from '@/components/panels/VariablesPanel.vue';
@@ -138,89 +138,6 @@ function addVariable(name: string, type: 'string' | 'number') {
 // Remove uma variável do chatbot
 function removeVariable(name: string) {
   delete variables.value[name];
-}
-
-// Exporta o fluxo como JSON para download
-function exportJSON() {
-  const data = getProjectData();
-
-  const json = JSON.stringify(data, null, 2);
-  const blob = new Blob([json], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'chatbot.json';
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-// Importa um JSON e carrega o projeto
-function importJSON() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'application/json';
-
-  input.onchange = (e) => {
-    const file = (e.target as HTMLInputElement).files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const data = JSON.parse(event.target?.result as string);
-
-        setProjectData(data);
-
-        alert('Projeto carregado com sucesso!');
-      } catch (error) {
-        alert('Erro ao carregar o arquivo JSON. Verifique se o formato está correto.');
-        console.error('Erro ao importar JSON:', error);
-      }
-    };
-
-    reader.readAsText(file);
-  };
-
-  input.click();
-}
-
-// Visualiza o JSON em uma nova janela
-function viewJSON() {
-  const data = {
-    blocks: blocks.value,
-    connections: connections.value,
-    variables: variables.value
-  };
-
-  const json = JSON.stringify(data, null, 2);
-  const win = window.open('', '_blank');
-  if (win) {
-    win.document.write(`
-      <html>
-        <head>
-          <title>JSON do Chatbot</title>
-          <style>
-            body {
-              font-family: monospace;
-              padding: 20px;
-              background: #1e1e1e;
-              color: #d4d4d4;
-            }
-            pre {
-              background: #2d2d2d;
-              padding: 20px;
-              border-radius: 8px;
-              overflow: auto;
-            }
-          </style>
-        </head>
-        <body>
-          <h2>JSON do Chatbot</h2>
-          <pre>${json}</pre>
-        </body>
-      </html>
-    `);
-  }
 }
 
 // Alterna o modo tela cheia do preview
@@ -403,10 +320,6 @@ function startResize(event: MouseEvent) {
             </button>
           </div>
         </div>
-
-        <button @click="importJSON" class="btn-secondary">📂 Importar</button>
-        <button @click="viewJSON" class="btn-secondary">👁️ Ver JSON</button>
-        <button @click="exportJSON" class="btn-secondary">💾 Exportar</button>
 
         <FileMenu />
 

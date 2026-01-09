@@ -12,25 +12,27 @@
     </div>
 
     <!-- Dropdown -->
-    <div v-if="open" class="dropdown">
+    <div v-if="open" class="dropdown" :class="{ 'align-right': !isWordPress }">
       <div class="item" @click="handleMenuClick(newProject)">Novo projeto</div>
       
-      <!-- Desabilitados fora do WordPress -->
-      <div class="item disabled" v-if="!isWordPress">Salvar (apenas no WordPress)</div>
-      <div class="item disabled" v-if="!isWordPress">Salvar como... (apenas no WordPress)</div>
-      <div class="item disabled" v-if="!isWordPress">Abrir... (apenas no WordPress)</div>
-      <div class="item disabled" v-if="!isWordPress">Excluir... (apenas no WordPress)</div>
-      <div class="item disabled" v-if="!isWordPress">Compartilhar... (apenas no WordPress)</div>
+      <!-- Ações disponíveis no worpress quando logado -->
+      <template v-if="showWordPressItems">
+        <div class="separator"></div>
+        <div class="item" @click="handleMenuClick(saveProject)">Salvar</div>
+        <div class="item" @click="handleMenuClick(() => showSaveAs = true)">Salvar como...</div>
+        <div class="item" @click="handleMenuClick(openList)">Abrir...</div>
+        <div class="item" @click="handleMenuClick(openDeleteModal)">Excluir...</div>
+        <div class="item" @click="handleMenuClick(openShare)">Compartilhar...</div>
+      </template>
 
-      <!-- Ativos no WordPress -->
-      <div class="item" v-if="isWordPress" @click="handleMenuClick(saveProject)">Salvar</div>
-      <div class="item" v-if="isWordPress" @click="handleMenuClick(() => showSaveAs = true)">Salvar como...</div>
-      <div class="item" v-if="isWordPress" @click="handleMenuClick(openList)">Abrir...</div>
-      <div class="item" v-if="isWordPress" @click="handleMenuClick(openDeleteModal)">Excluir...</div>
-      <div class="item" v-if="isWordPress" @click="handleMenuClick(openShare)">Compartilhar...</div>
+      <div class="separator"></div>
+
+      <!-- Ações locais (computador) -->
+      <div class="item" @click="handleMenuClick(openFromComputer)">Abrir do computador</div>
+      <div class="item" @click="handleMenuClick(saveToComputer)">Salvar no computador</div>
     </div>
 
-    <!-- PLACEHOLDERS dos modais -->
+    <!-- Modal: Salvar como -->
     <div v-if="showSaveAs" class="placeholder-modal">
       <div class="box">
         <h3>Salvar como...</h3>
@@ -54,15 +56,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, toRefs } from 'vue';
+import { ref, toRefs, computed } from 'vue';
 import { useProjects } from '@/utils/useProjects';
-import { setProjectData } from '@/utils/projectData';
+import { resetProjectData } from '@/utils/projectData';
+import { useAuth } from '@/auth';
+import { importFromComputer, exportToComputer } from '@/utils/localProjectIO';
 import OpenProjectModal from '@/components/modals/OpenProjectModal.vue';
 import DeleteProjectModal from '@/components/modals/DeleteProjectModal.vue';
 import ShareModal from '@/components/modals/ShareModal.vue';
 
 const projects = useProjects();
 const { currentProjectId, currentProjectName, error } = toRefs(projects);
+const auth = useAuth();
 
 const open = ref(false);
 const showSaveAs = ref(false);
@@ -75,6 +80,11 @@ const showShare = ref(false);
 const isWordPress =
   typeof window !== 'undefined' &&
   !!window.CLIC_AUTH && !!window.CLIC_CHATBOT;
+
+// Detecta usuário logado
+const showWordPressItems = computed(() => {
+  return auth.state.ready && auth.state.loggedIn;
+});
 
 // abre/fecha dropdown
 function toggleMenu() {
@@ -91,20 +101,9 @@ function handleMenuClick(action: Function) {
 // Novo
 // ----------------------------------------------------------------------
 function newProject() {
-  setProjectData({
-    blocks: [
-      {
-        id: 'block_inicio',
-        type: 'message',
-        position: { x: 100, y: 100 },
-        content: 'Olá! Bem-vindo ao chatbot.',
-        nextBlockId: undefined
-      }
-    ],
-    connections: [],
-    variables: {}
-  });
+  resetProjectData();
 
+  // novo projeto SEMPRE rompe vínculo
   projects.currentProjectId.value = null;
   projects.currentProjectName.value = '';
 
@@ -168,6 +167,29 @@ function openShare() {
   showShare.value = true;
   open.value = false; // fecha menu
 }
+
+// ----------------------------------------------------------------------
+// Ações locais (computador)
+// ----------------------------------------------------------------------
+function openFromComputer() {
+  importFromComputer(
+    () => {
+      // Rompe vínculo com projeto salvo (se houver)
+      projects.currentProjectId.value = null;
+      projects.currentProjectName.value = '';
+
+      alert('Projeto carregado com sucesso!');
+    },
+    () => {
+      alert('Erro ao carregar o arquivo JSON. Verifique se o formato está correto.');
+    }
+  );
+}
+
+
+function saveToComputer() {
+  exportToComputer();
+}
 </script>
 
 <style scoped>
@@ -207,6 +229,11 @@ function openShare() {
   box-shadow: 0 4px 8px rgba(0,0,0,0.2);
 
   z-index: 9999; /* GARANTE que fica sempre por cima */
+}
+
+.dropdown.align-right {
+  left: auto;
+  right: 0;
 }
 
 .item {
@@ -249,6 +276,12 @@ function openShare() {
   color: red;
   margin-top: 8px;
   font-size: 13px;
+}
+
+.separator {
+  height: 1px;
+  background: #ddd;
+  margin: 6px 0;
 }
 
 </style>
