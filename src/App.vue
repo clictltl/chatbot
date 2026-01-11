@@ -80,15 +80,20 @@ onUnmounted(() => {
   document.removeEventListener('click', handleDocumentClick);
 });
 
+
+
 // Cria um novo bloco no canvas
-function createBlock(type: BlockType) {
+function createBlock(type: BlockType, position?: { x: number; y: number }) {
   if (type === 'start') return; // ✅ start não é criado pelo menu
+
   const newBlock: Block = {
     id: `block_${Date.now()}`,
     type,
-    position: contextMenuPosition.value
-      ? { x: contextMenuPosition.value.x, y: contextMenuPosition.value.y }
-      : { x: 100 + blocks.value.length * 50, y: 100 + blocks.value.length * 30 },
+    position: position
+      ? position
+      : contextMenuPosition.value
+        ? { x: contextMenuPosition.value.x, y: contextMenuPosition.value.y }
+        : { x: 100 + blocks.value.length * 50, y: 100 + blocks.value.length * 30 },
     content: getDefaultContent(type),
     choices: type === 'choiceQuestion' ? [] : undefined,
     conditions: type === 'condition' ? [] : undefined,
@@ -97,9 +102,15 @@ function createBlock(type: BlockType) {
 
   blocks.value.push(newBlock);
   selectedBlockId.value = newBlock.id;
+
+  // fecha menus antigos do pai (se existirem)
   showNewBlockMenu.value = false;
   showContextMenu.value = false;
   contextMenuPosition.value = null;
+}
+
+function handleCreateBlockFromCanvas(payload: { type: BlockType; position?: { x: number; y: number } }) {
+  createBlock(payload.type, payload.position);
 }
 
 // Handler de clique no documento para fechar menus
@@ -111,6 +122,10 @@ function handleDocumentClick(event: MouseEvent) {
     showNewBlockMenu.value = false;
   }
 }
+
+
+
+
 
 // Retorna o conteúdo padrão baseado no tipo do bloco
 function getDefaultContent(type: BlockType): string {
@@ -305,6 +320,9 @@ function startResize(event: MouseEvent) {
   document.addEventListener('mousemove', handleMouseMove);
   document.addEventListener('mouseup', handleMouseUp);
 }
+
+
+
 </script>
 
 <template>
@@ -312,10 +330,22 @@ function startResize(event: MouseEvent) {
     <!-- Toolbar superior com controles principais -->
     <header class="toolbar">
       <div class="toolbar-left">
-        <h1>📚 Editor de Chatbot Pedagógico</h1>
+        <!-- <h1>📚 Editor de Chatbot Pedagógico</h1> -->
+          <a
+            href="https://clic.tltlab.org"
+            class="toolbar-logo-link"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <img
+              src="@/assets/logo-clic.svg"
+              alt="CLIC"
+              class="toolbar-logo"
+            />
+</a>
       </div>
 
-      <div class="toolbar-center">
+      <!-- <div class="toolbar-center">
         <label>Zoom:</label>
         <input
           type="range"
@@ -324,50 +354,10 @@ function startResize(event: MouseEvent) {
           max="150"
           step="5"
         />
-      </div>
+      </div> -->
 
       <div class="toolbar-right">
-        <div class="new-block-wrapper" @click.stop>
-          <button @click="showNewBlockMenu = !showNewBlockMenu" class="btn-primary">
-            ➕ Novo Bloco
-          </button>
-
-          <!-- Menu dropdown para criar novos blocos -->
-          <div v-if="showNewBlockMenu" class="block-menu" @click.stop>
-            <button @click="createBlock('message')" class="block-menu-item">
-              <span class="block-icon" style="background: #3b82f6;">💬</span>
-              Mensagem
-            </button>
-            <button @click="createBlock('openQuestion')" class="block-menu-item">
-              <span class="block-icon" style="background: #10b981;">❓</span>
-              Pergunta Aberta
-            </button>
-            <button @click="createBlock('choiceQuestion')" class="block-menu-item">
-              <span class="block-icon" style="background: #f59e0b;">📊</span>
-              Múltipla Escolha
-            </button>
-            <button @click="createBlock('condition')" class="block-menu-item">
-              <span class="block-icon" style="background: #8b5cf6;">⚙️</span>
-              Condicional
-            </button>
-            <button @click="createBlock('setVariable')" class="block-menu-item">
-              <span class="block-icon" style="background: #06b6d4;">📝</span>
-              Definir Variável
-            </button>
-            <button @click="createBlock('math')" class="block-menu-item">
-              <span class="block-icon" style="background: #f97316;">🔢</span>
-              Operação Matemática
-            </button>
-            <button @click="createBlock('image')" class="block-menu-item">
-              <span class="block-icon" style="background: #ec4899;">🖼️</span>
-              Imagem
-            </button>
-            <button @click="createBlock('end')" class="block-menu-item">
-              <span class="block-icon" style="background: #ef4444;">✅</span>
-              Fim da Conversa
-            </button>
-          </div>
-        </div>
+       
 
         <FileMenu />
 
@@ -392,6 +382,7 @@ function startResize(event: MouseEvent) {
           @update:zoom="zoom = $event"
           @context-menu="handleCanvasContextMenu"
           @block-context-menu="handleBlockContextMenu"
+          @create-block="handleCreateBlockFromCanvas"
         />
 
         <!-- Menu de contexto (botão direito) -->
@@ -552,7 +543,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
+  padding: 6px 20px;
   background: white;
   border-bottom: 1px solid #e5e7eb;
   gap: 24px;
@@ -817,5 +808,16 @@ body {
   color: #6b7280;
   text-align: center;
   user-select: none;
+}
+
+.toolbar-logo {
+  height: 42px;
+  width: auto;
+}
+
+.toolbar-logo-link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
 }
 </style>

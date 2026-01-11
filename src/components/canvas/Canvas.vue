@@ -11,7 +11,7 @@
  */
 
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
-import type { Block, Connection } from '@/types/chatbot';
+import type { Block, Connection, BlockType } from '@/types/chatbot';
 import BlockNode from './BlockNode.vue';
 
 const props = defineProps<{
@@ -21,15 +21,59 @@ const props = defineProps<{
   zoom: number;
 }>();
 
+const showCanvasNewBlockMenu = ref(false);
+
+function getCanvasCenterWorldPosition(): { x: number; y: number } {
+  const rect = canvasRef.value?.getBoundingClientRect();
+  if (!rect) return { x: 120, y: 120 };
+
+  const zoom = props.zoom / 100;
+
+  // centro da área visível (tela -> mundo)
+  const x = (rect.width / 2 - panOffset.value.x) / zoom;
+  const y = (rect.height / 2 - panOffset.value.y) / zoom;
+
+  return { x, y };
+}
+
+function requestCreateBlock(type: BlockType) {
+  const pos = getCanvasCenterWorldPosition(); // ou pode usar mousePosition.value se preferir
+  emit('create-block', { type, position: pos });
+  showCanvasNewBlockMenu.value = false;
+}
+
 const emit = defineEmits<{
   'update:selectedBlockId': [id: string | null];
-   'focus-block-editor': []; // ✅ NOVO EVENTO
+  'focus-block-editor': []; // ✅ NOVO EVENTO
   'update:blocks': [blocks: Block[]];
   'update:connections': [connections: Connection[]];
   'update:zoom': [zoom: number];
   'context-menu': [position: { x: number; y: number; screenX: number; screenY: number }];
   'block-context-menu': [blockId: string, position: { x: number; y: number; screenX: number; screenY: number }];
+  // ✅ NOVO:
+  'create-block': [payload: { type: BlockType; position?: { x: number; y: number } }];
 }>();
+
+const canvasMenuRef = ref<HTMLElement | null>(null);
+
+function handleDocumentClick(event: MouseEvent) {
+  if (!showCanvasNewBlockMenu.value) return;
+
+  const target = event.target as HTMLElement;
+
+  // Se clicou fora do menu e fora do botão
+  if (canvasMenuRef.value && !canvasMenuRef.value.contains(target)) {
+    showCanvasNewBlockMenu.value = false;
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleDocumentClick);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleDocumentClick);
+});
 
 const canvasRef = ref<HTMLDivElement | null>(null);
 
@@ -69,6 +113,17 @@ function keepPointUnderAnchor(oldZoomPct: number, newZoomPct: number, anchorClie
   };
 }
 
+// ✅ CONTROLES DE ZOOM (BOTÕES + / -)
+function zoomIn() {
+  const next = Math.min(150, props.zoom + 10);
+  emit('update:zoom', next);
+}
+
+function zoomOut() {
+  const next = Math.max(25, props.zoom - 10);
+  emit('update:zoom', next);
+}
+
 // Estado do arraste de blocos
 const draggedBlock = ref<string | null>(null);
 const dragStart = ref({ x: 0, y: 0, blockX: 0, blockY: 0 });
@@ -83,7 +138,9 @@ const selectedConnectionId = ref<string | null>(null);
 
 // Estado do arraste de waypoints
 const draggingWaypoint = ref<{ connectionId: string; waypointIndex: number } | null>(null);
-const draggingSegment = ref<{ connectionId: string; segmentIndex: number; startPos: { x: number; y: number } } | null>(null);
+const draggingSegment = ref<{ connectionId: string; segmentIndex: number; startPos: { x: number; y: number } } | null>(
+  null
+);
 
 const canvasStyle = computed(() => ({
   transform: `translate(${panOffset.value.x}px, ${panOffset.value.y}px) scale(${props.zoom / 100})`,
@@ -154,9 +211,7 @@ function getConnectionPath(fromX: number, fromY: number, toX: number, toY: numbe
 
   // Se o destino está abaixo, passa por baixo; se está acima, passa por cima
   const goingDown = dy > 0;
-  const edgeY = goingDown
-    ? Math.max(fromY, toY) + verticalGap  // Passa por baixo
-    : Math.min(fromY, toY) - verticalGap; // Passa por cima
+  const edgeY = goingDown ? Math.max(fromY, toY) + verticalGap : Math.min(fromY, toY) - verticalGap;
 
   if (goingDown) {
     // Caminho por baixo: direita -> baixo -> esquerda -> sobe até destino
@@ -321,7 +376,6 @@ function handleBlockSelect(blockId: string) {
   }
 }
 
-
 // Deletar um bloco
 function handleBlockDelete(blockId: string) {
   // Remove o bloco
@@ -329,9 +383,7 @@ function handleBlockDelete(blockId: string) {
   emit('update:blocks', updatedBlocks);
 
   // Remove todas as conexões relacionadas ao bloco
-  const updatedConnections = props.connections.filter(
-    c => c.fromBlockId !== blockId && c.toBlockId !== blockId
-  );
+  const updatedConnections = props.connections.filter(c => c.fromBlockId !== blockId && c.toBlockId !== blockId);
   emit('update:connections', updatedConnections);
 
   // Limpa seleção se o bloco deletado estava selecionado
@@ -389,9 +441,7 @@ function createConnection(fromBlockId: string, fromOutputId: string | undefined,
 
   // NÃO permitir conexão duplicada idêntica
   const isDuplicate = props.connections.some(
-    c => c.fromBlockId === fromBlockId &&
-         c.fromOutputId === fromOutputId &&
-         c.toBlockId === toBlockId
+    c => c.fromBlockId === fromBlockId && c.fromOutputId === fromOutputId && c.toBlockId === toBlockId
   );
 
   if (isDuplicate) {
@@ -407,18 +457,14 @@ function createConnection(fromBlockId: string, fromOutputId: string | undefined,
     if (fromOutputId && block.choices) {
       return {
         ...block,
-        choices: block.choices.map(c =>
-          c.id === fromOutputId ? { ...c, nextBlockId: toBlockId } : c
-        )
+        choices: block.choices.map(c => (c.id === fromOutputId ? { ...c, nextBlockId: toBlockId } : c))
       };
     }
 
     if (fromOutputId && block.conditions) {
       return {
         ...block,
-        conditions: block.conditions.map(c =>
-          c.id === fromOutputId ? { ...c, nextBlockId: toBlockId } : c
-        )
+        conditions: block.conditions.map(c => (c.id === fromOutputId ? { ...c, nextBlockId: toBlockId } : c))
       };
     }
 
@@ -437,9 +483,7 @@ function createConnection(fromBlockId: string, fromOutputId: string | undefined,
   };
 
   // Remove APENAS conexão antiga com mesmo from/fromOutput (permite múltiplas entradas)
-  const filteredConnections = props.connections.filter(
-    c => !(c.fromBlockId === fromBlockId && c.fromOutputId === fromOutputId)
-  );
+  const filteredConnections = props.connections.filter(c => !(c.fromBlockId === fromBlockId && c.fromOutputId === fromOutputId));
 
   emit('update:connections', [...filteredConnections, newConnection]);
 }
@@ -523,9 +567,7 @@ function getSmoothPath(points: { x: number; y: number }[], shortenEnd: number = 
 
 // Calcula o path de uma conexão baseado nos IDs dos handles
 function getConnectionPathById(conn: Connection): string {
-  const fromHandleId = conn.fromOutputId
-    ? `${conn.fromBlockId}-output-${conn.fromOutputId}`
-    : `${conn.fromBlockId}-output`;
+  const fromHandleId = conn.fromOutputId ? `${conn.fromBlockId}-output-${conn.fromOutputId}` : `${conn.fromBlockId}-output`;
   const toHandleId = `${conn.toBlockId}-input`;
 
   const fromHandle = document.querySelector(`[data-handle-id='${fromHandleId}']`) as HTMLElement;
@@ -537,8 +579,6 @@ function getConnectionPathById(conn: Connection): string {
   const toPos = getHandlePosition(toHandle);
 
   // Encurta o path para parar antes do handle de destino (deixa espaço para clicar)
-  // Como as curvas sempre terminam horizontalmente (da esquerda para direita),
-  // encurtamos apenas no eixo X
   const shortenDistance = 8; // pixels antes do handle
   const shortenedToPos = {
     x: toPos.x - shortenDistance,
@@ -556,9 +596,7 @@ function getConnectionPathById(conn: Connection): string {
 
 // Obtém os pontos de uma conexão (início, waypoints, fim)
 function getConnectionPoints(conn: Connection): { x: number; y: number }[] {
-  const fromHandleId = conn.fromOutputId
-    ? `${conn.fromBlockId}-output-${conn.fromOutputId}`
-    : `${conn.fromBlockId}-output`;
+  const fromHandleId = conn.fromOutputId ? `${conn.fromBlockId}-output-${conn.fromOutputId}` : `${conn.fromBlockId}-output`;
   const toHandleId = `${conn.toBlockId}-input`;
 
   const fromHandle = document.querySelector(`[data-handle-id='${fromHandleId}']`) as HTMLElement;
@@ -686,18 +724,14 @@ function deleteSelectedConnection() {
     if (connection.fromOutputId && block.choices) {
       return {
         ...block,
-        choices: block.choices.map(c =>
-          c.id === connection.fromOutputId ? { ...c, nextBlockId: undefined } : c
-        )
+        choices: block.choices.map(c => (c.id === connection.fromOutputId ? { ...c, nextBlockId: undefined } : c))
       };
     }
 
     if (connection.fromOutputId && block.conditions) {
       return {
         ...block,
-        conditions: block.conditions.map(c =>
-          c.id === connection.fromOutputId ? { ...c, nextBlockId: undefined } : c
-        )
+        conditions: block.conditions.map(c => (c.id === connection.fromOutputId ? { ...c, nextBlockId: undefined } : c))
       };
     }
 
@@ -805,7 +839,6 @@ onBeforeUnmount(() => {
     canvas.removeEventListener('wheel', handleWheel as any);
   }
 });
-
 </script>
 
 <template>
@@ -819,31 +852,68 @@ onBeforeUnmount(() => {
     @mouseleave="handleCanvasMouseUp"
     @contextmenu="handleCanvasContextMenu"
   >
+    <!-- ✅ Botão + Novo Bloco dentro do Canvas -->
+    <div class="canvas-toolbar" @click.stop>
+      <button class="btn-newblock" @click="showCanvasNewBlockMenu = !showCanvasNewBlockMenu">
+        ➕ Novo Bloco
+      </button>
+
+      <div v-if="showCanvasNewBlockMenu" class="canvas-block-menu" ref="canvasMenuRef">
+        <button @click="requestCreateBlock('message')" class="canvas-block-menu-item">
+          <span class="menu-icon" style="background:#3b82f6;">💬</span>
+          <span class="menu-label">Mensagem</span>
+        </button>
+
+        <button @click="requestCreateBlock('openQuestion')" class="canvas-block-menu-item">
+          <span class="menu-icon" style="background:#b45309;">❓</span>
+          <span class="menu-label">Pergunta Aberta</span>
+        </button>
+
+        <button @click="requestCreateBlock('choiceQuestion')" class="canvas-block-menu-item">
+          <span class="menu-icon" style="background:#f59e0b;">📊</span>
+          <span class="menu-label">Múltipla Escolha</span>
+        </button>
+
+        <button @click="requestCreateBlock('condition')" class="canvas-block-menu-item">
+          <span class="menu-icon" style="background:#8b5cf6;">⚙️</span>
+          <span class="menu-label">Condicional</span>
+        </button>
+
+        <button @click="requestCreateBlock('setVariable')" class="canvas-block-menu-item">
+          <span class="menu-icon" style="background:#06b6d4;">📝</span>
+          <span class="menu-label">Definir Variável</span>
+        </button>
+
+        <button @click="requestCreateBlock('math')" class="canvas-block-menu-item">
+          <span class="menu-icon" style="background:#f97316;">🔢</span>
+          <span class="menu-label">Operação Matemática</span>
+        </button>
+
+        <button @click="requestCreateBlock('image')" class="canvas-block-menu-item">
+          <span class="menu-icon" style="background:#ec4899;">🖼️</span>
+          <span class="menu-label">Imagem</span>
+        </button>
+
+        <button @click="requestCreateBlock('end')" class="canvas-block-menu-item">
+          <span class="menu-icon" style="background:#ef4444;">✅</span>
+          <span class="menu-label">Fim</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ✅ CONTROLES DE ZOOM NO CANTO DIREITO INFERIOR -->
+    <div class="canvas-zoom-controls" @click.stop>
+      <button class="zoom-btn" @click="zoomIn">+</button>
+      <button class="zoom-btn" @click="zoomOut">−</button>
+    </div>
+
     <!-- SVG para desenhar as conexões -->
-    <svg
-      ref="svgRef"
-      class="connections-svg"
-      :style="canvasStyle"
-    >
+    <svg ref="svgRef" class="connections-svg" :style="canvasStyle">
       <defs>
-        <marker
-          id="arrowhead"
-          markerWidth="10"
-          markerHeight="10"
-          refX="9"
-          refY="3"
-          orient="auto"
-        >
+        <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
           <polygon points="0 0, 10 3, 0 6" fill="#64748b" />
         </marker>
-        <marker
-          id="arrowhead-temp"
-          markerWidth="10"
-          markerHeight="10"
-          refX="9"
-          refY="3"
-          orient="auto"
-        >
+        <marker id="arrowhead-temp" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
           <polygon points="0 0, 10 3, 0 6" fill="#10b981" />
         </marker>
       </defs>
@@ -937,7 +1007,7 @@ onBeforeUnmount(() => {
 
     <!-- Dica quando está conectando -->
     <div v-if="connectingFrom" class="connection-hint">
-      <strong>🔗 Conectando...</strong><br>
+      <strong>🔗 Conectando...</strong><br />
       Clique no handle vermelho (entrada) do bloco de destino
     </div>
 
@@ -956,6 +1026,110 @@ onBeforeUnmount(() => {
   overflow: hidden;
   background-color: #ffffff;
   cursor: default;
+}
+
+.canvas-toolbar {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 1200;
+  pointer-events: auto;
+}
+
+.btn-newblock {
+  padding: 8px 12px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+}
+
+.btn-newblock:hover {
+  background: #2563eb;
+}
+
+.canvas-block-menu {
+  margin-top: 8px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.12);
+  padding: 8px;
+
+  /* ✅ controla a largura do menu */
+  width: 200px;
+  max-width: 240px;
+}
+
+.canvas-block-menu-item {
+  width: 100%;
+  padding: 10px 12px;
+  background: white;
+  border: none;
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.menu-label {
+  line-height: 1;
+}
+
+.canvas-block-menu-item:hover {
+  background: #f3f4f6;
+}
+
+/* ✅ ZOOM CONTROLS */
+.canvas-zoom-controls {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.zoom-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  background: white;
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 800;
+  color: #111827;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.12);
+  line-height: 1;
+}
+
+.zoom-btn:hover {
+  background: #f3f4f6;
 }
 
 .canvas::before {
