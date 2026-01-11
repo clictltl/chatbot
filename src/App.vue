@@ -18,6 +18,8 @@ import VariablesPanel from '@/components/panels/VariablesPanel.vue';
 import PreviewPanel from '@/components/panels/PreviewPanel.vue';
 import AuthMenu from '@/components/layout/AuthMenu.vue';
 import FileMenu from '@/components/layout/FileMenu.vue';
+import clicLogo from '@/assets/logo-clic.svg'
+
 
 const zoom = ref(100);
 const activeTab = ref<'properties' | 'variables' | 'preview'>('properties');
@@ -331,18 +333,10 @@ function startResize(event: MouseEvent) {
     <header class="toolbar">
       <div class="toolbar-left">
         <!-- <h1>📚 Editor de Chatbot Pedagógico</h1> -->
-          <a
-            href="https://clic.tltlab.org"
-            class="toolbar-logo-link"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <img
-              src="@/assets/logo-clic.svg"
-              alt="CLIC"
-              class="toolbar-logo"
-            />
-</a>
+          <a href="https://clic.tltlab.org" class="toolbar-logo-link" target="_blank" rel="noopener noreferrer">
+            <img :src="clicLogo" alt="CLIC" class="toolbar-logo" />
+          </a>
+
       </div>
 
       <!-- <div class="toolbar-center">
