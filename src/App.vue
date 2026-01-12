@@ -332,31 +332,15 @@ function startResize(event: MouseEvent) {
     <!-- Toolbar superior com controles principais -->
     <header class="toolbar">
       <div class="toolbar-left">
-        <!-- <h1>📚 Editor de Chatbot Pedagógico</h1> -->
           <a href="https://clic.tltlab.org" class="toolbar-logo-link" target="_blank" rel="noopener noreferrer">
             <img :src="clicLogo" alt="CLIC" class="toolbar-logo" />
           </a>
-
+          <h1 class="toolbar-title">Chatbot</h1>
       </div>
 
-      <!-- <div class="toolbar-center">
-        <label>Zoom:</label>
-        <input
-          type="range"
-          v-model.number="zoom"
-          min="25"
-          max="150"
-          step="5"
-        />
-      </div> -->
-
       <div class="toolbar-right">
-       
-
         <FileMenu />
-
         <AuthMenu />
-
       </div>
     </header>
 
@@ -543,13 +527,36 @@ body {
   gap: 24px;
 }
 
-.toolbar-left h1 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-  color: #111827;
+/* Lado esquerdo */
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 30px;
 }
 
+/* Logo */
+.toolbar-logo-link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.toolbar-logo {
+  height: 42px;
+  width: auto;
+}
+
+/* Título */
+.toolbar-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* Centro */
 .toolbar-center {
   display: flex;
   align-items: center;
@@ -573,6 +580,7 @@ body {
   min-width: 45px;
 }
 
+/* Direita */
 .toolbar-right {
   display: flex;
   align-items: center;
@@ -804,14 +812,4 @@ body {
   user-select: none;
 }
 
-.toolbar-logo {
-  height: 42px;
-  width: auto;
-}
-
-.toolbar-logo-link {
-  display: inline-flex;
-  align-items: center;
-  text-decoration: none;
-}
 </style>

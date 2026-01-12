@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc -b && vite build",
+    "build:github": "vue-tsc -b && vite build --mode github",
+    "build:wordpress": "vue-tsc -b && vite build --mode production",
+    "build": "npm run build:wordpress",
     "preview": "vite preview",
-    "deploy": "npm run build && touch dist/.nojekyll"
+    "deploy": "npm run build:github && touch dist/.nojekyll"
   },
   "dependencies": {
     "leader-line-new": "^1.1.9",
