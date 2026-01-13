@@ -249,6 +249,54 @@ async function shareProject() {
   }
 }
 
+/**
+ * ---------------------------------------------------
+ * PUBLICAR
+ * ---------------------------------------------------
+ */
+async function publishProject() {
+  error.value = null;
+
+  // não faz sentido publicar sem projeto salvo
+  if (!currentProjectId.value) {
+    error.value = 'PROJECT_NOT_SAVED';
+    return null;
+  }
+
+  const body = {
+    project_id: currentProjectId.value
+  };
+
+  try {
+    const res = await fetch(restRoot + 'publish', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-WP-Nonce': nonce
+      },
+      body: JSON.stringify(body)
+    });
+
+    const data = await res.json();
+
+    if (!data.success) {
+      error.value = data.error || 'UNKNOWN_ERROR';
+      return null;
+    }
+
+    return {
+      token: data.token,
+      publish_url: data.publish_url,
+      published_at: data.published_at,
+      existing: data.existing
+    };
+
+  } catch (err: any) {
+    error.value = err.message;
+    return null;
+  }
+}
 
 /**
  * ---------------------------------------------------
@@ -268,6 +316,7 @@ const projectsStore = {
   loadProject,
   deleteProject,
   shareProject,
+  publishProject,
 };
 
 export function useProjects() {

@@ -19,10 +19,11 @@
       <template v-if="showWordPressItems">
         <div class="separator"></div>
         <div class="item" @click="handleMenuClick(saveProject)">Salvar</div>
-        <div class="item" @click="handleMenuClick(() => showSaveAs = true)">Salvar como...</div>
+        <div class="item" @click="handleMenuClick(openSaveAs)">Salvar como...</div>
         <div class="item" @click="handleMenuClick(openList)">Abrir...</div>
         <div class="item" @click="handleMenuClick(openDeleteModal)">Excluir...</div>
         <div class="item" @click="handleMenuClick(openShare)">Compartilhar...</div>
+        <div class="item" @click="handleMenuClick(openPublish)">Publicar...</div>
       </template>
 
       <div class="separator"></div>
@@ -52,6 +53,8 @@
 
     <ShareModal v-if="showShare" @close="showShare = false"/>
 
+    <PublishModal v-if="showPublish" @close="showPublish = false"/>
+
   </div>
 </template>
 
@@ -64,6 +67,7 @@ import { importFromComputer, exportToComputer } from '@/utils/localProjectIO';
 import OpenProjectModal from '@/components/modals/OpenProjectModal.vue';
 import DeleteProjectModal from '@/components/modals/DeleteProjectModal.vue';
 import ShareModal from '@/components/modals/ShareModal.vue';
+import PublishModal from '@/components/modals/PublishModal.vue';
 
 const projects = useProjects();
 const { currentProjectId, currentProjectName, error } = toRefs(projects);
@@ -75,6 +79,7 @@ const showOpen = ref(false);
 const showDelete = ref(false);
 const saveAsName = ref("");
 const showShare = ref(false);
+const showPublish = ref(false);
 
 // Detecta WordPress
 const isWordPress =
@@ -97,22 +102,16 @@ function handleMenuClick(action: Function) {
   action();
 }
 
-// ----------------------------------------------------------------------
 // Novo
-// ----------------------------------------------------------------------
 function newProject() {
   resetProjectData();
 
   // novo projeto SEMPRE rompe vínculo
   projects.currentProjectId.value = null;
   projects.currentProjectName.value = '';
-
-  open.value = false;
 }
 
-// ----------------------------------------------------------------------
 // Salvar
-// ----------------------------------------------------------------------
 async function saveProject() {
   // Se é um novo projeto, forçar "Salvar como..."
   if (!projects.currentProjectId.value) {
@@ -122,12 +121,9 @@ async function saveProject() {
 
   // Senão salva normalmente
   await projects.saveProject();
-  open.value = false;
 }
 
-// ----------------------------------------------------------------------
 // Salvar como...
-// ----------------------------------------------------------------------
 async function confirmSaveAs() {
   const result = await projects.saveProjectAs(saveAsName.value);
 
@@ -139,19 +135,18 @@ async function confirmSaveAs() {
   // se der erro o modal fica aberto e o usuário vê a mensagem
 }
 
-// ----------------------------------------------------------------------
+function openSaveAs() {
+  showSaveAs.value = true;
+}
+
 // Abrir...
-// ----------------------------------------------------------------------
 async function openList() {
   await projects.listProjects();
   showOpen.value = true;
 }
 
-// ----------------------------------------------------------------------
 // Excluir...
-// ----------------------------------------------------------------------
 function openDeleteModal() {
-  open.value = false;
   showDelete.value = true;
 }
 
@@ -160,17 +155,18 @@ function handleDeleted() {
   showDelete.value = false;
 }
 
-// ----------------------------------------------------------------------
 // Compartilhar...
-// ----------------------------------------------------------------------
 function openShare() {
   showShare.value = true;
-  open.value = false; // fecha menu
 }
 
-// ----------------------------------------------------------------------
+// Publicar
+function openPublish() {
+  showPublish.value = true;
+  open.value = false; // proteção defensiva
+}
+
 // Ações locais (computador)
-// ----------------------------------------------------------------------
 function openFromComputer() {
   importFromComputer(
     () => {

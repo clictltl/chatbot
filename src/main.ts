@@ -6,6 +6,9 @@ import { setProjectData } from './utils/projectData';
 
 async function init() {
 
+  const isWordPress =
+    typeof window !== 'undefined' && !!window.CLIC_CHATBOT;
+
   // 1. Detectar link compartilhado
   const params = new URLSearchParams(window.location.search);
   const shareToken = params.get("share");
@@ -31,10 +34,27 @@ async function init() {
     }
   }
 
-  // 2. Verifica login normalmente
+  // 2. Normaliza URL FINAL (apenas no WordPress)
+  if (isWordPress) {
+    const appUrl = window.CLIC_CHATBOT!.app_url;
+    const appPath = new URL(appUrl, window.location.origin).pathname;
+    const editorPath = appPath.replace(/\/$/, '') + '/editor';
+
+    const pathname = window.location.pathname;
+
+    if (!pathname.startsWith(editorPath)) {
+      window.history.replaceState(
+        {},
+        document.title,
+        editorPath
+      );
+    }
+  }
+
+  // 3. Verifica login normalmente
   await checkLogin();
 
-  // 3. Monta app somente depois
+  // 4. Monta app somente depois
   createApp(App).mount('#app');
 }
 
