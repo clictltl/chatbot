@@ -28,11 +28,17 @@ export default defineConfig(({ mode }) => {
       outDir: 'dist',
       assetsDir: 'assets',
       sourcemap: false,
+      rollupOptions: {
+        input: {
+          editor: fileURLToPath(new URL('./src/editor/main-editor.ts', import.meta.url)),
+          runtime: fileURLToPath(new URL('./src/runtime/main-runtime.ts', import.meta.url)),
+        },
+      },
     },
     test: {
       environment: 'node',
       globals: true,
-      include: ['src/runtime/__tests__/**/*.test.ts'],
+      include: ['src/runtime/engine/__tests__/**/*.test.ts'],
     }
   }
 })
