@@ -15,9 +15,11 @@
  * - ✅ Sempre inicia pelo bloco "start" (se existir)
  */
 
-import { ref, nextTick } from 'vue';
-import type { Block, Variable, ChatMessage } from '@/types/chatbot';
-import { interpolateText, evaluateCondition } from '@/utils/interpolation';
+import { ref, nextTick, watch, computed } from 'vue';
+import type { Block, Variable } from '@/types/chatbot';
+
+// engine
+import { useChatRuntime } from '@/runtime/useChatRuntime';
 
 const props = defineProps<{
   blocks: Block[];
@@ -29,458 +31,102 @@ const emit = defineEmits<{
   'update:variables': [variables: Record<string, Variable>];
 }>();
 
+const runtime = ref<ReturnType<typeof useChatRuntime>>(
+  useChatRuntime({
+    blocks: props.blocks,
+    variables: props.variables,
+    onVariablesChange: handleVariablesChange,
+  })
+);
+
+const r = computed(() => runtime.value);
+
+function createRuntime() {
+  runtime.value = useChatRuntime({
+    blocks: props.blocks,
+    variables: props.variables,
+    onVariablesChange: handleVariablesChange,
+  });
+}
+
+watch(
+  () => props.blocks,
+  () => {
+    createRuntime();
+  },
+  { deep: true }
+);
+
+watch(
+  () => runtime.value.messages.length,
+  async () => {
+    await nextTick();
+    scrollToBottom();
+  }
+);
+
 const isFullscreen = ref(false);
 
 // Estado da conversa
-const messages = ref<ChatMessage[]>([]);
-const currentBlockId = ref<string | null>(null);
 const userInput = ref('');
-const isWaitingForInput = ref(false);
-const currentChoices = ref<{ id: string; label: string; nextBlockId?: string }[]>([]);
-const sessionVariables = ref<Record<string, Variable>>({});
 const chatEndRef = ref<HTMLDivElement | null>(null);
-const isRunning = ref(false);
 
-// ✅ Token da sessão: serve para "cancelar" timeouts antigos quando parar/reiniciar
-const runId = ref(0);
+const ERROR_MESSAGES: Record<string, string> = {
+  BLOCK_NOT_FOUND: 'Erro de fluxo: bloco não encontrado.',
+  IMAGE_NOT_DEFINED: 'Erro: imagem não definida.',
+  INVALID_FLOW: 'Erro de fluxo.',
+  INVALID_NEXT_BLOCK: 'Erro de fluxo: bloco de destino não encontrado.',
+  NO_CHOICE_TARGET: 'Erro: escolha sem destino definido.',
+  NO_CHOICES: 'Erro: pergunta sem opções de escolha.',
+  NO_CONDITION_MATCH: 'Nenhuma condição satisfeita.',
+  NO_START_BLOCK: 'Bloco de início não encontrado.',
+  START_NO_NEXT: 'Início sem conexão de saída.',
+  UNSUPPORTED_BLOCK_TYPE: 'Tipo de bloco não suportado.',
+};
+
+function handleVariablesChange(sessionVars: Record<string, Variable>) {
+  const updated = { ...props.variables };
+  Object.keys(sessionVars).forEach(key => {
+    if (updated[key]) {
+      updated[key] = { ...sessionVars[key] };
+    }
+  });
+  emit('update:variables', updated);
+}
 
 // ✅ Para o chat e volta pra tela inicial limpa
 function stopChat() {
-  // invalida callbacks pendentes
-  runId.value++;
-
-  isWaitingForInput.value = false;
-  currentChoices.value = [];
-  currentBlockId.value = null;
-
-  messages.value = [];
-  userInput.value = '';
-
-  isRunning.value = false;
+  runtime.value.stopChat();
 }
 
 // ✅ Inicia uma nova sessão do chatbot SEMPRE pelo bloco start
 function startChat() {
-  messages.value = [];
-  currentBlockId.value = null;
   userInput.value = '';
-  isWaitingForInput.value = false;
-  currentChoices.value = [];
-  isRunning.value = true;
-
-  // ✅ nova sessão
-  runId.value++;
-
-  // Copia as variáveis para a sessão atual
-  sessionVariables.value = {};
-  Object.keys(props.variables).forEach(key => {
-    sessionVariables.value[key] = { ...props.variables[key] };
-  });
-
-  // Sincroniza valores com as variáveis globais
-  syncVariablesToParent();
-
-  // ✅ Busca o bloco start (sempre!)
-  const startBlock = props.blocks.find(b => b.id === 'start' || b.type === 'start');
-
-  if (startBlock) {
-    currentBlockId.value = startBlock.id;
-    processBlock(startBlock);
-    return;
-  }
-
-  // fallback: se não existir start por algum motivo
-  if (props.blocks.length > 0) {
-    const fallback = props.blocks[0];
-    currentBlockId.value = fallback.id;
-    processBlock(fallback);
-  } else {
-    addErrorMessage('Nenhum bloco encontrado. Crie blocos no canvas para começar.');
-    endChat();
-  }
-}
-
-// Processa um bloco baseado no seu tipo
-function processBlock(block: Block) {
-  if (!block) {
-    addErrorMessage('(Erro de fluxo: bloco não encontrado)');
-    endChat();
-    return;
-  }
-
-  // ✅ Captura o id da sessão atual para proteger timeouts
-  const myRun = runId.value;
-
-  switch (block.type) {
-    // ✅ START: não exibe nada, só encaminha para o nextBlockId atual
-    case 'start':
-      setTimeout(() => {
-        if (!isRunning.value || runId.value !== myRun) return;
-
-        if (block.nextBlockId) {
-          const nextBlock = props.blocks.find(b => b.id === block.nextBlockId);
-          if (nextBlock) {
-            currentBlockId.value = block.nextBlockId;
-            processBlock(nextBlock);
-          } else {
-            console.error(`Bloco de destino não encontrado: ${block.nextBlockId}`);
-            addErrorMessage('(Erro de fluxo: bloco de destino não encontrado)');
-            endChat();
-          }
-        } else {
-          addErrorMessage('(Start sem conexão de saída)');
-          endChat();
-        }
-      }, 0);
-      break;
-
-    case 'message':
-      // Exibe uma mensagem e continua para o próximo bloco
-      addBotMessage(block.content);
-      setTimeout(() => {
-        if (!isRunning.value || runId.value !== myRun) return;
-
-        if (block.nextBlockId) {
-          const nextBlock = props.blocks.find(b => b.id === block.nextBlockId);
-          if (nextBlock) {
-            currentBlockId.value = block.nextBlockId;
-            processBlock(nextBlock);
-          } else {
-            console.error(`Bloco de destino não encontrado: ${block.nextBlockId}`);
-            addErrorMessage('(Erro de fluxo: bloco de destino não encontrado)');
-            endChat();
-          }
-        } else {
-          endChat();
-        }
-      }, 500);
-      break;
-
-    case 'openQuestion':
-      // Aguarda uma resposta de texto do usuário
-      addBotMessage(block.content);
-      isWaitingForInput.value = true;
-      currentChoices.value = [];
-      break;
-
-    case 'choiceQuestion':
-      // Exibe botões de múltipla escolha
-      addBotMessage(block.content);
-      if (block.choices && block.choices.length > 0) {
-        currentChoices.value = block.choices;
-        isWaitingForInput.value = false;
-      } else {
-        addErrorMessage('(Erro: pergunta sem opções de escolha)');
-        endChat();
-      }
-      break;
-
-    case 'condition': {
-      // Avalia condições e segue para o bloco correspondente
-      let nextBlockId: string | undefined;
-
-      if (block.conditions) {
-        for (const condition of block.conditions) {
-          if (
-            evaluateCondition(
-              condition.variableName,
-              condition.operator,
-              condition.value,
-              sessionVariables.value
-            )
-          ) {
-            nextBlockId = condition.nextBlockId;
-            break;
-          }
-        }
-      }
-
-      if (nextBlockId) {
-        const nextBlock = props.blocks.find(b => b.id === nextBlockId);
-        if (nextBlock) {
-          currentBlockId.value = nextBlockId;
-          processBlock(nextBlock);
-        } else {
-          console.error(`Bloco de destino não encontrado: ${nextBlockId}`);
-          addErrorMessage('(Erro de fluxo: bloco de destino não encontrado)');
-          endChat();
-        }
-      } else {
-        console.warn('Nenhuma condição foi satisfeita no bloco condicional');
-        addErrorMessage('(Nenhuma condição satisfeita)');
-        endChat();
-      }
-      break;
-    }
-
-    case 'setVariable':
-      // Define o valor de uma variável e continua para o próximo bloco
-      if (block.variableName && sessionVariables.value[block.variableName]) {
-        const interpolatedValue = interpolateText(block.variableValue || '', sessionVariables.value);
-        sessionVariables.value[block.variableName].value = interpolatedValue;
-        syncVariablesToParent();
-      }
-
-      setTimeout(() => {
-        if (!isRunning.value || runId.value !== myRun) return;
-
-        if (block.nextBlockId) {
-          const nextBlock = props.blocks.find(b => b.id === block.nextBlockId);
-          if (nextBlock) {
-            currentBlockId.value = block.nextBlockId;
-            processBlock(nextBlock);
-          } else {
-            console.error(`Bloco de destino não encontrado: ${block.nextBlockId}`);
-            addErrorMessage('(Erro de fluxo: bloco de destino não encontrado)');
-            endChat();
-          }
-        } else {
-          endChat();
-        }
-      }, 300);
-      break;
-
-    case 'math':
-      // Realiza operação matemática com variável
-      if (block.variableName && sessionVariables.value[block.variableName]) {
-        const variable = sessionVariables.value[block.variableName];
-        const currentValue = Number(variable.value) || 0;
-
-        const interpolatedValue = interpolateText(block.mathValue || '0', sessionVariables.value);
-        const operandValue = Number(interpolatedValue) || 0;
-
-        let result = currentValue;
-        switch (block.mathOperation) {
-          case '+':
-            result = currentValue + operandValue;
-            break;
-          case '-':
-            result = currentValue - operandValue;
-            break;
-          case '*':
-            result = currentValue * operandValue;
-            break;
-          case '/':
-            result = operandValue !== 0 ? currentValue / operandValue : currentValue;
-            break;
-        }
-
-        sessionVariables.value[block.variableName].value = result;
-        syncVariablesToParent();
-      }
-
-      setTimeout(() => {
-        if (!isRunning.value || runId.value !== myRun) return;
-
-        if (block.nextBlockId) {
-          const nextBlock = props.blocks.find(b => b.id === block.nextBlockId);
-          if (nextBlock) {
-            currentBlockId.value = block.nextBlockId;
-            processBlock(nextBlock);
-          } else {
-            console.error(`Bloco de destino não encontrado: ${block.nextBlockId}`);
-            addErrorMessage('(Erro de fluxo: bloco de destino não encontrado)');
-            endChat();
-          }
-        } else {
-          endChat();
-        }
-      }, 300);
-      break;
-
-    case 'image': {
-      // Exibe uma imagem e continua para o próximo bloco
-      const imageUrl = block.imageData || block.imageUrl;
-      if (imageUrl) {
-        addImageMessage(imageUrl);
-      } else {
-        addErrorMessage('(Erro: imagem não definida)');
-      }
-
-      setTimeout(() => {
-        if (!isRunning.value || runId.value !== myRun) return;
-
-        if (block.nextBlockId) {
-          const nextBlock = props.blocks.find(b => b.id === block.nextBlockId);
-          if (nextBlock) {
-            currentBlockId.value = block.nextBlockId;
-            processBlock(nextBlock);
-          } else {
-            console.error(`Bloco de destino não encontrado: ${block.nextBlockId}`);
-            addErrorMessage('(Erro de fluxo: bloco de destino não encontrado)');
-            endChat();
-          }
-        } else {
-          endChat();
-        }
-      }, 500);
-      break;
-    }
-
-    case 'end':
-      if (block.content) {
-        addBotMessage(block.content);
-      }
-      endChat();
-      break;
-
-    default:
-      addErrorMessage(`(Tipo de bloco não suportado: ${String((block as any).type)})`);
-      endChat();
-      break;
-  }
-}
-
-// Adiciona uma mensagem do bot ao chat
-function addBotMessage(content: string) {
-  const interpolated = interpolateText(content, sessionVariables.value);
-  messages.value.push({
-    id: `msg_${Date.now()}`,
-    type: 'bot',
-    content: interpolated
-  });
-  scrollToBottom();
-}
-
-// Adiciona uma mensagem do usuário ao chat
-function addUserMessage(content: string) {
-  messages.value.push({
-    id: `msg_${Date.now()}`,
-    type: 'user',
-    content
-  });
-  scrollToBottom();
-}
-
-// Adiciona uma mensagem de erro ao chat
-function addErrorMessage(content: string) {
-  messages.value.push({
-    id: `msg_${Date.now()}`,
-    type: 'bot',
-    content: `⚠️ ${content}`
-  });
-  scrollToBottom();
-}
-
-// Adiciona uma imagem ao chat
-function addImageMessage(imageUrl: string) {
-  messages.value.push({
-    id: `msg_${Date.now()}`,
-    type: 'image',
-    content: imageUrl
-  });
-  scrollToBottom();
+  runtime.value.start();
 }
 
 // Processa o envio de uma resposta de texto livre
 function handleSendMessage() {
-  if (!userInput.value.trim() || !isWaitingForInput.value) return;
-
-  const input = userInput.value.trim();
-  addUserMessage(input);
-
-  // Salva a resposta na variável correspondente
-  const currentBlock = props.blocks.find(b => b.id === currentBlockId.value);
-  if (currentBlock && currentBlock.type === 'openQuestion' && currentBlock.variableName) {
-    const variable = sessionVariables.value[currentBlock.variableName];
-    if (variable) {
-      if (variable.type === 'number') {
-        sessionVariables.value[currentBlock.variableName] = {
-          ...variable,
-          value: Number(input) || 0
-        };
-      } else {
-        sessionVariables.value[currentBlock.variableName] = {
-          ...variable,
-          value: input
-        };
-      }
-      syncVariablesToParent();
-    }
-  }
-
+  runtime.value.submitText(userInput.value);
   userInput.value = '';
-  isWaitingForInput.value = false;
-
-  // Segue para o próximo bloco
-  if (currentBlock && currentBlock.nextBlockId) {
-    const nextBlock = props.blocks.find(b => b.id === currentBlock.nextBlockId);
-    if (nextBlock) {
-      currentBlockId.value = currentBlock.nextBlockId;
-
-      const myRun = runId.value;
-      setTimeout(() => {
-        if (!isRunning.value || runId.value !== myRun) return;
-        processBlock(nextBlock);
-      }, 300);
-    } else {
-      console.error(`Bloco de destino não encontrado: ${currentBlock.nextBlockId}`);
-      addErrorMessage('(Erro de fluxo: bloco de destino não encontrado)');
-      endChat();
-    }
-  } else {
-    endChat();
-  }
 }
 
 // Processa a escolha de uma opção de múltipla escolha
 function handleChoiceClick(choice: { id: string; label: string; nextBlockId?: string }) {
-  addUserMessage(choice.label);
-  currentChoices.value = [];
-
-  if (choice.nextBlockId) {
-    const nextBlock = props.blocks.find(b => b.id === choice.nextBlockId);
-    if (nextBlock) {
-      currentBlockId.value = choice.nextBlockId;
-
-      const myRun = runId.value;
-      setTimeout(() => {
-        if (!isRunning.value || runId.value !== myRun) return;
-        processBlock(nextBlock);
-      }, 300);
-    } else {
-      console.error(`Bloco de destino não encontrado: ${choice.nextBlockId}`);
-      addErrorMessage('(Erro de fluxo: bloco de destino não encontrado)');
-      endChat();
-    }
-  } else {
-    console.warn('Escolha sem bloco de destino');
-    addErrorMessage('(Erro: escolha sem destino definido)');
-    endChat();
-  }
-}
-
-// Finaliza a conversa
-function endChat() {
-  isWaitingForInput.value = false;
-  currentChoices.value = [];
-  isRunning.value = false;
+  runtime.value.selectChoice(choice);
 }
 
 // Rola o chat para o final automaticamente
 function scrollToBottom() {
-  nextTick(() => {
-    if (chatEndRef.value) {
-      chatEndRef.value.scrollIntoView({ behavior: 'smooth' });
-    }
-  });
+  if (chatEndRef.value) {
+    chatEndRef.value.scrollIntoView({ behavior: 'smooth' });
+  }
 }
 
 // Alterna o modo tela cheia
 function toggleFullscreen() {
   isFullscreen.value = !isFullscreen.value;
   emit('toggle-fullscreen');
-}
-
-// Sincroniza as variáveis da sessão com as variáveis globais (atualiza a aba Variáveis)
-function syncVariablesToParent() {
-  const updated = { ...props.variables };
-  Object.keys(sessionVariables.value).forEach(key => {
-    if (updated[key]) {
-      updated[key] = { ...sessionVariables.value[key] };
-    }
-  });
-  emit('update:variables', updated);
 }
 </script>
 
@@ -489,13 +135,13 @@ function syncVariablesToParent() {
     <!-- ✅ NOVA BARRA (mantendo tudo igual) -->
     <div class="preview-toolbar">
       <button class="btn-toolbar btn-run" @click="startChat">
-        ▶️ {{ isRunning ? 'Reiniciar' : 'Iniciar' }}
+        ▶️ {{ r.isRunning ? 'Reiniciar' : 'Iniciar' }}
       </button>
 
       <button
         class="btn-toolbar btn-stop"
         @click="stopChat"
-        :disabled="!isRunning && messages.length === 0"
+        :disabled="!r.isRunning && r.messages.length  === 0"
       >
         ■ Parar
       </button>
@@ -512,7 +158,7 @@ function syncVariablesToParent() {
     </button>
 
     <!-- Tela inicial antes de começar o teste -->
-    <div v-if="!isRunning && messages.length === 0" class="start-screen">
+    <div v-if="!r.isRunning && r.messages.length === 0" class="start-screen">
       <div class="start-icon">💬</div>
       <h3>Teste seu Chatbot</h3>
       <p>Clique em "Iniciar" para conversar com seu chatbot e testar o fluxo criado.</p>
@@ -524,7 +170,7 @@ function syncVariablesToParent() {
       <div class="messages">
         <!-- Mensagens do bot e do usuário -->
         <div
-          v-for="message in messages"
+          v-for="message in r.messages"
           :key="message.id"
           :class="[
             'message',
@@ -541,15 +187,20 @@ function syncVariablesToParent() {
               @load="(e) => { (e.target as HTMLImageElement).style.display = 'block'; }"
             />
           </div>
-          <div v-else class="message-bubble">
-            {{ message.content }}
+          <div v-else class="message-bubble" :class="{ 'message-error': ERROR_MESSAGES[message.content] }">
+            <span v-if="ERROR_MESSAGES[message.content]">
+              {{ ERROR_MESSAGES[message.content] }}
+            </span>
+            <span v-else>
+              {{ message.content }}
+            </span>
           </div>
         </div>
 
         <!-- Botões de múltipla escolha -->
-        <div v-if="currentChoices.length > 0" class="choices-container">
+        <div v-if="r.currentChoices.length > 0" class="choices-container">
           <button
-            v-for="choice in currentChoices"
+            v-for="choice in r.currentChoices"
             :key="choice.id"
             @click="handleChoiceClick(choice)"
             class="choice-button"
@@ -563,7 +214,7 @@ function syncVariablesToParent() {
       </div>
 
       <!-- Campo de entrada para perguntas abertas -->
-      <div v-if="isWaitingForInput" class="input-area">
+      <div v-if="r.isWaitingForInput" class="input-area">
         <input
           v-model="userInput"
           type="text"
@@ -575,7 +226,7 @@ function syncVariablesToParent() {
       </div>
 
       <!-- Botão para reiniciar o chat -->
-      <div v-if="!isWaitingForInput && currentChoices.length === 0 && !isRunning" class="restart-area">
+      <div v-if="!r.isWaitingForInput && r.currentChoices.length === 0 && !r.isRunning" class="restart-area">
         <button @click="startChat" class="btn-restart">🔄 Recomeçar</button>
       </div>
     </div>
@@ -775,6 +426,11 @@ function syncVariablesToParent() {
   font-size: 13px;
   line-height: 1.5;
   word-wrap: break-word;
+}
+
+.message-error::before {
+  content: '⚠️';
+  margin-right: 6px;
 }
 
 .message-bot .message-bubble {
