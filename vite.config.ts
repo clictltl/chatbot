@@ -28,6 +28,11 @@ export default defineConfig(({ mode }) => {
       outDir: 'dist',
       assetsDir: 'assets',
       sourcemap: false,
+    },
+    test: {
+      environment: 'node',
+      globals: true,
+      include: ['src/runtime/__tests__/**/*.test.ts'],
     }
   }
 })
