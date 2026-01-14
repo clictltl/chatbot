@@ -30,6 +30,7 @@ export default defineConfig(({ mode }) => {
       sourcemap: false,
       rollupOptions: {
         input: {
+          index: fileURLToPath(new URL('./index.html', import.meta.url)),
           editor: fileURLToPath(new URL('./src/editor/main-editor.ts', import.meta.url)),
           runtime: fileURLToPath(new URL('./src/runtime/main-runtime.ts', import.meta.url)),
         },
