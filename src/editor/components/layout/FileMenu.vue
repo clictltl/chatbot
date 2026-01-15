@@ -53,6 +53,12 @@
 
     <ShareModal v-if="showShare" @close="showShare = false"/>
 
+    <ConfirmSaveBeforePublishModal
+      v-if="showConfirmSaveBeforePublish"
+      @close="showConfirmSaveBeforePublish = false"
+      @confirm="confirmSaveAndPublish"
+    />
+
     <PublishModal v-if="showPublish" @close="showPublish = false"/>
 
   </div>
@@ -68,6 +74,8 @@ import OpenProjectModal from '@/editor/components/modals/OpenProjectModal.vue';
 import DeleteProjectModal from '@/editor/components/modals/DeleteProjectModal.vue';
 import ShareModal from '@/editor/components/modals/ShareModal.vue';
 import PublishModal from '@/editor/components/modals/PublishModal.vue';
+import ConfirmSaveBeforePublishModal from '@/editor/components/modals/ConfirmSaveBeforePublishModal.vue';
+
 
 const projects = useProjects();
 const { currentProjectId, currentProjectName, error } = toRefs(projects);
@@ -80,6 +88,7 @@ const showDelete = ref(false);
 const saveAsName = ref("");
 const showShare = ref(false);
 const showPublish = ref(false);
+const showConfirmSaveBeforePublish = ref(false);
 
 // Detecta WordPress
 const isWordPress =
@@ -162,8 +171,21 @@ function openShare() {
 
 // Publicar
 function openPublish() {
+  // Projeto nunca salvo
+  if (!projects.currentProjectId.value) {
+    alert('Salve o projeto antes de publicar.');
+    return;
+  }
+
+  showConfirmSaveBeforePublish.value = true;
+}
+
+async function confirmSaveAndPublish() {
+  const saved = await projects.saveProject();
+  if (!saved) return;
+
+  showConfirmSaveBeforePublish.value = false;
   showPublish.value = true;
-  open.value = false; // proteção defensiva
 }
 
 // Ações locais (computador)
