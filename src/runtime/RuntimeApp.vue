@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, nextTick, watch } from 'vue';
 import { useChatRuntime } from '@/runtime/engine/useChatRuntime';
 import type { ProjectData } from '@/shared/types/project';
+import clicLogo from '@/assets/logo-clic.svg';
 
 // ===== Estado de carregamento =====
 const isLoading = ref(true);
@@ -77,6 +78,11 @@ function startChat() {
   runtime.value?.start();
 }
 
+function stopChat() {
+  userInput.value = '';
+  runtime.value?.stopChat();
+}
+
 function sendText() {
   runtime.value?.submitText(userInput.value);
   userInput.value = '';
@@ -99,196 +105,283 @@ onMounted(loadProject);
 </script>
 
 <template>
-  <div class="runtime-app">
-    <!-- Loading -->
-    <div v-if="isLoading" class="start-screen">
-      <div class="start-icon">💬</div>
-      <p>Carregando chatbot…</p>
-    </div>
-
-    <!-- Fatal error -->
-    <div v-else-if="fatalError" class="start-screen">
-      <div class="start-icon">⚠️</div>
-      <p>Chatbot indisponível.</p>
-    </div>
-
-    <!-- Chat -->
-    <div v-else class="chat-container">
-      <!-- Tela inicial -->
-      <div v-if="!r?.isRunning && r?.messages.length === 0" class="start-screen">
-        <div class="start-icon">💬</div>
-        <h3>Iniciar conversa</h3>
-        <button class="btn-start" @click="startChat">▶️ Iniciar</button>
-      </div>
-
-      <!-- Mensagens -->
-      <div v-else class="messages">
-        <div
-          v-for="message in r!.messages"
-          :key="message.id"
-          :class="[
-            'message',
-            message.type === 'bot' || message.type === 'image'
-              ? 'message-bot'
-              : 'message-user'
-          ]"
+  <div class="runtime-page">
+    <div class="runtime-widget">
+      
+      <!-- Header -->
+      <header class="runtime-header">
+        <a
+          href="https://clic.tltlab.org"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="runtime-logo-link"
         >
-          <div v-if="message.type === 'image'" class="message-image">
-            <img :src="message.content" />
-          </div>
-          <div
-            v-else
-            class="message-bubble"
-            :class="{ 'message-error': ERROR_MESSAGES[message.content] }"
-          >
-            {{ ERROR_MESSAGES[message.content] ?? message.content }}
-          </div>
-        </div>
+          <img
+            :src="clicLogo"
+            alt="CLIC"
+            class="runtime-logo"
+          />
+        </a>
 
-        <!-- Choices -->
-        <div v-if="r!.currentChoices.length" class="choices-container">
+        <div class="runtime-actions">
+          <button class="btn-start" @click="startChat">
+            ▶️ Iniciar
+          </button>
+
           <button
-            v-for="choice in r!.currentChoices"
-            :key="choice.id"
-            class="choice-button"
-            @click="selectChoice(choice)"
+            class="btn-stop"
+            @click="stopChat()"
+            :disabled="!r?.isRunning"
           >
-            {{ choice.label }}
+            ■ Parar
           </button>
         </div>
+      </header>
 
-        <div ref="chatEndRef" />
-      </div>
+      <!-- Body -->
+      <main class="runtime-body">
+        <!-- Loading -->
+        <div v-if="isLoading" class="start-screen">
+          <div class="start-icon">💬</div>
+          <p>Carregando chatbot…</p>
+        </div>
 
-      <!-- Input -->
-      <div v-if="r!.isWaitingForInput" class="input-area">
-        <input
-          v-model="userInput"
-          placeholder="Digite sua resposta…"
-          @keyup.enter="sendText"
-        />
-        <button @click="sendText">📤</button>
-      </div>
+        <!-- Fatal error -->
+        <div v-else-if="fatalError" class="start-screen">
+          <div class="start-icon">⚠️</div>
+          <p>Chatbot indisponível.</p>
+        </div>
 
-      <!-- Restart -->
-      <div
-        v-if="!r!.isWaitingForInput && !r!.currentChoices.length && !r!.isRunning"
-        class="restart-area"
-      >
-        <button @click="startChat">🔄 Recomeçar</button>
-      </div>
+        <!-- Chat -->
+        <div v-else class="chat-container">
+          <!-- Tela inicial -->
+          <div
+            v-if="!r?.isRunning && r?.messages.length === 0"
+            class="start-screen"
+          >
+            <div class="start-icon">💬</div>
+            <h3>Iniciar conversa</h3>
+            <p>Clique em iniciar para começar</p>
+          </div>
+
+          <!-- Mensagens -->
+          <div v-else class="messages">
+            <!-- (mensagens iguais às atuais) -->
+            <div
+              v-for="message in r!.messages"
+              :key="message.id"
+              :class="[
+                'message',
+                message.type === 'bot' || message.type === 'image'
+                  ? 'message-bot'
+                  : 'message-user'
+              ]"
+            >
+              <div v-if="message.type === 'image'" class="message-image">
+                <img :src="message.content" />
+              </div>
+
+              <div
+                v-else
+                class="message-bubble"
+                :class="{ 'message-error': ERROR_MESSAGES[message.content] }"
+              >
+                {{ ERROR_MESSAGES[message.content] ?? message.content }}
+              </div>
+            </div>
+
+            <!-- Choices -->
+            <div v-if="r!.currentChoices.length" class="choices-container">
+              <button
+                v-for="choice in r!.currentChoices"
+                :key="choice.id"
+                class="choice-button"
+                @click="selectChoice(choice)"
+              >
+                {{ choice.label }}
+              </button>
+            </div>
+
+            <div ref="chatEndRef" />
+          </div>
+
+          <!-- Input -->
+          <div v-if="r!.isWaitingForInput" class="input-area">
+            <input
+              v-model="userInput"
+              placeholder="Digite sua resposta…"
+              @keyup.enter="sendText"
+            />
+            <button @click="sendText" class="btn-send">📤</button>
+          </div>
+
+          <!-- Restart -->
+          <div
+            v-if="!r!.isWaitingForInput && !r!.currentChoices.length && !r!.isRunning"
+            class="restart-area"
+          >
+            <button @click="startChat" class="btn-restart">
+              🔄 Recomeçar
+            </button>
+          </div>
+        </div>
+      </main>
+
     </div>
   </div>
 </template>
 
+
 <style scoped>
-.preview-panel {
-  height: 100%;
+/* ======================================================
+   PAGE LAYOUT
+   ====================================================== */
+
+.runtime-page {
+  min-height: 100dvh; /* viewport dinâmico (mobile-safe) */
   display: flex;
-  flex-direction: column;
-  background: #f9fafb;
-  position: relative;
+  align-items: center;
+  justify-content: center;
+  background: #f3f4f6;
+  padding: 12px;
 }
 
-/* ✅ Barra nova com botões */
-.preview-toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 200;
+
+/* ======================================================
+   WIDGET CONTAINER
+   ====================================================== */
+
+.runtime-widget {
+  width: 100%;
+  max-width: 420px;
+  height: 640px;
 
   display: flex;
-  gap: 10px;
-  padding: 10px 12px;
+  flex-direction: column;
+
   background: #f9fafb;
+  border-radius: 16px;
+  overflow: hidden;
+
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
+}
+
+
+/* ======================================================
+   HEADER
+   ====================================================== */
+
+.runtime-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 12px 16px;
+  background: white;
   border-bottom: 1px solid #e5e7eb;
 }
 
-.btn-toolbar{
-  height: 36px;
+.runtime-logo {
+  height: 28px;
+  display: block;
+}
+
+.runtime-logo-link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.runtime-actions {
+  display: flex;
+  gap: 8px;
+}
+
+
+/* ======================================================
+   HEADER BUTTONS
+   ====================================================== */
+
+.btn-start,
+.btn-stop {
+  height: 32px;
   padding: 0 12px;
+
   border-radius: 8px;
   border: none;
   cursor: pointer;
-  font-size: 13px;
+
+  font-size: 12px;
   font-weight: 700;
-  transition: all 0.2s;
+
+  transition: all 0.2s ease;
 }
 
-.btn-run{
+.btn-start {
   background: #10b981;
   color: white;
 }
 
-.btn-run:hover{
+.btn-start:hover {
   background: #059669;
   transform: translateY(-1px);
 }
 
-.btn-stop{
+.btn-stop {
   background: #ef4444;
   color: white;
 }
 
-.btn-stop:hover{
+.btn-stop:hover {
   background: #dc2626;
   transform: translateY(-1px);
 }
 
-.btn-toolbar:disabled{
+.btn-stop:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
 }
 
-/* Botão de tela cheia (seu original) */
-.btn-fullscreen {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 100;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  background: white;
-  color: #6b7280;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  font-size: 18px;
-  cursor: pointer;
-  transition: all 0.2s;
+
+/* ======================================================
+   BODY
+   ====================================================== */
+
+.runtime-body {
+  flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.btn-fullscreen:hover {
-  background: #f9fafb;
-  color: #3b82f6;
-  border-color: #3b82f6;
-  transform: scale(1.1);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+.chat-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.btn-fullscreen:active {
-  transform: scale(0.95);
-}
 
-/* Tela inicial */
+/* ======================================================
+   START / EMPTY / ERROR SCREEN
+   ====================================================== */
+
 .start-screen {
+  flex: 1;
+
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100%;
+
   gap: 16px;
   padding: 32px;
   text-align: center;
 }
 
 .start-icon {
-  font-size: 64px;
-  margin-bottom: 8px;
+  font-size: 56px;
 }
 
 .start-screen h3 {
@@ -299,44 +392,23 @@ onMounted(loadProject);
 }
 
 .start-screen p {
-  color: #6b7280;
-  font-size: 14px;
   margin: 0;
-  max-width: 280px;
+  font-size: 14px;
+  color: #6b7280;
   line-height: 1.5;
 }
 
-.btn-start {
-  padding: 12px 24px;
-  background: #10b981;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  margin-top: 8px;
-}
 
-.btn-start:hover {
-  background: #059669;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-}
+/* ======================================================
+   MESSAGES AREA
+   ====================================================== */
 
-/* Container do chat */
-.chat-container {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-/* Área de mensagens com scroll */
 .messages {
   flex: 1;
   overflow-y: auto;
+
   padding: 16px;
+
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -344,13 +416,13 @@ onMounted(loadProject);
 
 .message {
   display: flex;
-  animation: slideIn 0.3s ease-out;
+  animation: slideIn 0.25s ease-out;
 }
 
 @keyframes slideIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
@@ -366,13 +438,19 @@ onMounted(loadProject);
   justify-content: flex-end;
 }
 
-/* Bolhas de mensagem */
+
+/* ======================================================
+   MESSAGE BUBBLES
+   ====================================================== */
+
 .message-bubble {
   max-width: 75%;
   padding: 10px 14px;
-  border-radius: 12px;
+
   font-size: 13px;
   line-height: 1.5;
+
+  border-radius: 12px;
   word-wrap: break-word;
 }
 
@@ -384,38 +462,73 @@ onMounted(loadProject);
 .message-bot .message-bubble {
   background: white;
   color: #374151;
+
   border: 1px solid #e5e7eb;
   border-bottom-left-radius: 4px;
+
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .message-user .message-bubble {
   background: #3b82f6;
   color: white;
+
   border-bottom-right-radius: 4px;
-  box-shadow: 0 1px 3px rgba(59, 130, 246, 0.4);
+
+  box-shadow: 0 1px 3px rgba(59, 130, 246, 0.35);
 }
 
-/* Botões de múltipla escolha */
+
+/* ======================================================
+   IMAGE MESSAGE
+   ====================================================== */
+
+.message-image {
+  max-width: 75%;
+  border-radius: 12px;
+  overflow: hidden;
+
+  background: white;
+  border: 1px solid #e5e7eb;
+
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.message-image img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 360px;
+  object-fit: contain;
+}
+
+
+/* ======================================================
+   CHOICES
+   ====================================================== */
+
 .choices-container {
   display: flex;
   flex-direction: column;
   gap: 8px;
   margin-top: 8px;
-  animation: slideIn 0.3s ease-out;
 }
 
 .choice-button {
-  padding: 10px 16px;
+  padding: 10px 14px;
+
   background: white;
   color: #3b82f6;
+
   border: 2px solid #3b82f6;
   border-radius: 8px;
+
   font-size: 13px;
   font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
   text-align: left;
+
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .choice-button:hover {
@@ -424,22 +537,30 @@ onMounted(loadProject);
   transform: translateX(4px);
 }
 
-/* Área de input para perguntas abertas */
+
+/* ======================================================
+   INPUT AREA
+   ====================================================== */
+
 .input-area {
   display: flex;
   gap: 8px;
+
   padding: 12px;
-  border-top: 1px solid #e5e7eb;
   background: white;
+  border-top: 1px solid #e5e7eb;
 }
 
 .input-area input {
   flex: 1;
+
   padding: 10px 12px;
+  font-size: 13px;
+
   border: 1px solid #d1d5db;
   border-radius: 8px;
-  font-size: 13px;
-  transition: all 0.2s;
+
+  transition: all 0.2s ease;
 }
 
 .input-area input:focus {
@@ -449,15 +570,19 @@ onMounted(loadProject);
 }
 
 .btn-send {
-  padding: 10px 20px;
+  padding: 10px 16px;
+
   background: #3b82f6;
   color: white;
+
   border: none;
   border-radius: 8px;
+
   font-size: 13px;
   font-weight: 600;
+
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
 }
 
 .btn-send:hover {
@@ -465,24 +590,33 @@ onMounted(loadProject);
   transform: translateY(-1px);
 }
 
-/* Área de reinício */
+
+/* ======================================================
+   RESTART AREA
+   ====================================================== */
+
 .restart-area {
   padding: 12px;
-  border-top: 1px solid #e5e7eb;
-  background: white;
   text-align: center;
+
+  background: white;
+  border-top: 1px solid #e5e7eb;
 }
 
 .btn-restart {
   padding: 10px 20px;
+
   background: #10b981;
   color: white;
+
   border: none;
   border-radius: 8px;
+
   font-size: 13px;
   font-weight: 600;
+
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
 }
 
 .btn-restart:hover {
@@ -490,21 +624,49 @@ onMounted(loadProject);
   transform: translateY(-1px);
 }
 
-/* Imagens no chat */
-.message-image {
-  max-width: 75%;
-  border-radius: 12px;
-  overflow: hidden;
-  background: white;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-}
 
-.message-image img {
-  display: block;
-  width: 100%;
-  height: auto;
-  max-height: 400px;
-  object-fit: contain;
+/* ======================================================
+   MOBILE ADJUSTMENTS
+   ====================================================== */
+
+@media (max-width: 480px) {
+  .runtime-widget {
+    height: 100%;
+    max-width: 100%;
+    border-radius: 12px;
+  }
+
+  .runtime-header {
+    padding: 10px 12px;
+  }
+
+  .runtime-logo {
+    height: 24px;
+  }
+
+  .btn-start,
+  .btn-stop {
+    height: 30px;
+    font-size: 11px;
+    padding: 0 10px;
+  }
+
+  .input-area {
+    padding: 10px;
+  }
+
+  .input-area input {
+    font-size: 16px; /* evita zoom no iOS */
+  }
+
+  .btn-send {
+    font-size: 14px;
+    padding: 10px 14px;
+  }
+
+  .choice-button {
+    padding: 12px 16px;
+    font-size: 14px;
+  }
 }
 </style>
