@@ -1,4 +1,6 @@
-// Runtime entry (stub)
-// Will be implemented in a later step
+import { createApp } from 'vue';
+import RuntimeApp from './RuntimeApp.vue';
 
-console.info('[CLIC Chatbot] Runtime entry loaded');
+// segurança: runtime é SPA independente
+const app = createApp(RuntimeApp);
+app.mount('#app');

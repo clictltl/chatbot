@@ -1,5 +1,5 @@
 import { getProjectData, setProjectData } from './projectData';
-import type { ProjectData } from './projectData';
+import type { ProjectData } from '@/shared/types/project';
 
 /**
  * ---------------------------------------------------

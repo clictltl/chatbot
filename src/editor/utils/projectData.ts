@@ -1,6 +1,7 @@
 // src/editor/projectData.ts
 import { ref } from 'vue';
 import type { Block, Connection, Variable } from '@/shared/types/chatbot';
+import type { ProjectData } from '@/shared/types/project';
 
 /**
  * Estado reativo do editor
@@ -57,15 +58,6 @@ export const connections = ref<Connection[]>([
 
 export const variables = ref<Record<string, Variable>>({});
 export const selectedBlockId = ref<string | null>(null);
-
-/**
- * Estrutura serializável do projeto
- */
-export interface ProjectData {
-  blocks: Block[];
-  connections: Connection[];
-  variables: Record<string, Variable>;
-}
 
 /**
  * Exporta o estado atual do editor

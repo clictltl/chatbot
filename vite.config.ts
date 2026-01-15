@@ -28,6 +28,7 @@ export default defineConfig(({ mode }) => {
       outDir: 'dist',
       assetsDir: 'assets',
       sourcemap: false,
+      manifest: true,
       rollupOptions: {
         input: {
           index: fileURLToPath(new URL('./index.html', import.meta.url)),
