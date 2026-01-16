@@ -242,6 +242,8 @@ onMounted(loadProject);
   display: flex;
   align-items: center;
   justify-content: center;
+  font-family: -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   background: #f3f4f6;
   padding: 12px;
 }
