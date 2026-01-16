@@ -1,4 +1,4 @@
-# 💬 CLIC Chatbot Editor
+# CLIC Chatbot Editor
 
 A visual, node-based editor for creating interactive pedagogical chatbots. Build conversational flows with a drag-and-drop interface, dynamic variables, conditional logic, and more.
 
@@ -6,19 +6,19 @@ A visual, node-based editor for creating interactive pedagogical chatbots. Build
 
 ---
 
-## ✨ Features
+## Features
 
 ### Visual Flow Editor
 - **Node-based canvas** for designing conversation flows
 - **9 block types** for different conversation elements:
-  - 📝 **Message** - Bot messages
-  - ❓ **Open Question** - Free-text user input
-  - 📊 **Multiple Choice** - Button-based selections
-  - ⚙️ **Conditional** - Branch logic based on variables
-  - 📝 **Set Variable** - Store and update data
-  - 🔢 **Math Operation** - Perform calculations
-  - 🖼️ **Image** - Display images (URL or upload)
-  - ✅ **End** - Conclude the conversation
+  - **Message** - Bot messages
+  - **Open Question** - Free-text user input
+  - **Multiple Choice** - Button-based selections
+  - **Conditional** - Branch logic based on variables
+  - **Set Variable** - Store and update data
+  - **Math Operation** - Perform calculations
+  - **Image** - Display images (URL or upload)
+  - **End** - Conclude the conversation
 - **Drag & drop** block creation
 - **Context menus** for block operations (duplicate, copy, paste, delete)
 - **Copy/Paste/Duplicate** blocks across the canvas
@@ -35,21 +35,21 @@ A visual, node-based editor for creating interactive pedagogical chatbots. Build
 
 #### 1. **WordPress Integration** (Full Features)
 When integrated with the CLIC WordPress plugin, gain access to:
-- 💾 **Save Projects** - Store chatbots in the WordPress database
-- 🔗 **Share Projects** - Generate shareable links
-- 📢 **Publish Projects** - Make chatbots public and embeddable
-- 👥 **User Accounts** - Save and manage multiple projects
+- **Save Projects** - Store chatbots in the WordPress database
+- **Share Projects** - Generate shareable links
+- **Publish Projects** - Make chatbots public and embeddable
+- **User Accounts** - Save and manage multiple projects
 
 #### 2. **Standalone Mode** (GitHub Pages)
 Deploy independently without WordPress:
-- 📥 **Import Projects** - Load chatbot JSON files
-- 📤 **Export Projects** - Download chatbot configurations
-- 🌐 **Self-hosted** - Run on GitHub Pages or your own server
-- 🔓 **No backend required** - Fully client-side operation
+- **Import Projects** - Load chatbot JSON files
+- **Export Projects** - Download chatbot configurations
+- **Self-hosted** - Run on GitHub Pages or your own server
+- **No backend required** - Fully client-side operation
 
 ---
 
-## 🎯 Use Cases
+## Use Cases
 
 - **Interactive Learning Modules** - Create pedagogical chatbots for education
 - **Customer Support** - Build FAQ and troubleshooting chatbots
@@ -57,7 +57,7 @@ Deploy independently without WordPress:
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ### Project Structure
 ```
@@ -121,7 +121,7 @@ Visual links between blocks:
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### For End Users
 
@@ -148,7 +148,7 @@ See **[DEVELOPERS.md](./DEVELOPERS.md)** for:
 
 ---
 
-## 📖 Documentation
+## Documentation
 
 ### Editor Concepts
 
@@ -177,7 +177,7 @@ Data storage throughout the conversation. Accessible in:
 
 ---
 
-## 💡 Example: Simple Welcome Bot
+## Example: Simple Welcome Bot
 
 1. **Start Block** → "Welcome!" message
 2. **Message Block** → "What's your name?"
@@ -187,7 +187,7 @@ Data storage throughout the conversation. Accessible in:
 
 ---
 
-## 🔗 Integration with WordPress
+## Integration with WordPress
 
 When using the CLIC WordPress plugin:
 
@@ -218,7 +218,7 @@ GET    /wp-json/clic-chatbot/v1/publish/{token} # Load published chatbot
 
 ---
 
-## 🧪 Testing
+## Testing
 
 The runtime engine includes comprehensive unit tests:
 
@@ -236,7 +236,7 @@ npm run test:run     # Run tests once
 
 ---
 
-## 📦 Build & Deployment
+## Build & Deployment
 
 ### Development Mode
 ```bash
@@ -262,7 +262,7 @@ npm run deploy             # Build + deploy to GitHub Pages
 
 ---
 
-## 📋 Browser Support
+## Browser Support
 
 - Chrome/Chromium 90+
 - Firefox 88+
@@ -271,7 +271,7 @@ npm run deploy             # Build + deploy to GitHub Pages
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Areas of interest:
 - New block types
@@ -283,13 +283,13 @@ We welcome contributions! Areas of interest:
 
 ---
 
-## 📄 License
+## License
 
 This project is part of the CLIC initiative. See LICENSE file for details.
 
 ---
 
-## 🔗 Resources
+## Resources
 
 - **CLIC Project:** [https://clic.tltlab.org](https://clic.tltlab.org)
 - **GitHub Repository:** [https://github.com/clictltl/chatbot](https://github.com/clictltl/chatbot)
@@ -298,7 +298,7 @@ This project is part of the CLIC initiative. See LICENSE file for details.
 
 ---
 
-## ❓ FAQ
+## FAQ
 
 **Q: Can I use this without WordPress?**
 A: Yes! Export/import chatbots as JSON files or deploy to GitHub Pages in standalone mode.
@@ -317,4 +317,4 @@ A: No hard limit, but performance may degrade with 100+ variables. Keep your dat
 
 ---
 
-**Made with ❤️ by the CLIC Team**
+**Made with love by the CLIC Team**

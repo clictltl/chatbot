@@ -1,10 +1,10 @@
-# 👨‍💻 Developer Guide
+# Developer Guide
 
 Quick start guide for developers working on the CLIC Chatbot Editor.
 
 ---
 
-## 📋 Prerequisites
+## Prerequisites
 
 - **Node.js** 16+ ([Download](https://nodejs.org/))
 - **npm** 7+ (comes with Node.js) or **pnpm** 7+
@@ -13,7 +13,7 @@ Quick start guide for developers working on the CLIC Chatbot Editor.
 
 ---
 
-## ⚡ Quick Start
+## Quick Start
 
 ### 1. Clone the Repository
 
@@ -40,7 +40,7 @@ The editor will be available at: **http://localhost:5173**
 
 ---
 
-## 🛠️ Available Commands
+## Available Commands
 
 ### Development
 
@@ -89,12 +89,12 @@ npm run deploy
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 .
 ├── src/
-│   ├── editor/                    # ⚙️ EDITOR APPLICATION
+│   ├── editor/                    # EDITOR APPLICATION
 │   │   ├── App.vue               # Main editor component
 │   │   ├── main-editor.ts        # Editor entry point
 │   │   ├── auth.ts               # WordPress authentication logic
@@ -125,7 +125,7 @@ npm run deploy
 │   │       ├── localProjectIO.ts # File import/export
 │   │       └── useProjects.ts    # WordPress REST API client
 │   │
-│   ├── runtime/                   # 🎮 CHATBOT RUNTIME
+│   ├── runtime/                   # CHATBOT RUNTIME
 │   │   ├── RuntimeApp.vue        # Chatbot widget component
 │   │   ├── main-runtime.ts       # Runtime entry point
 │   │   │
@@ -144,7 +144,7 @@ npm run deploy
 │   │           ├── stopChat.test.ts
 │   │           └── helpers.ts
 │   │
-│   ├── shared/                    # 🤝 SHARED CODE
+│   ├── shared/                    # SHARED CODE
 │   │   ├── types/
 │   │   │   ├── chatbot.ts        # Block, Choice, Condition, Variable types
 │   │   │   └── project.ts        # ProjectData type
@@ -173,7 +173,7 @@ npm run deploy
 
 ---
 
-## 🧪 Testing
+## Testing
 
 ### Running Tests
 
@@ -223,7 +223,7 @@ describe('Message Block', () => {
 
 ---
 
-## 🔄 Development Workflow
+## Development Workflow
 
 ### 1. Creating a New Block Type
 
@@ -297,7 +297,7 @@ const debugState = ref({ /* ... */ });
 
 ---
 
-## 🔑 Key Concepts
+## Key Concepts
 
 ### Reactive State (Editor)
 
@@ -360,7 +360,7 @@ REST API methods communicate with the WordPress plugin:
 
 ---
 
-## 🚀 Building for Production
+## Building for Production
 
 ### Build Modes
 
@@ -406,7 +406,7 @@ Then visit `http://localhost:4173`
 
 ---
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Port Already in Use
 
@@ -468,7 +468,7 @@ npm run build
 
 ---
 
-## 📦 Dependencies
+## Dependencies
 
 ### Production
 - **vue** (3.4+) - UI framework
@@ -496,7 +496,7 @@ npm install --save-dev package-name
 
 ---
 
-## 🔗 Environment Variables
+## Environment Variables
 
 ### WordPress Integration
 
@@ -520,7 +520,7 @@ No environment variables needed for standalone development.
 
 ---
 
-## 🤝 Contributing Guidelines
+## Contributing Guidelines
 
 ### Before You Start
 1. Check existing issues and PRs
@@ -555,7 +555,7 @@ refactor: Simplify chat runtime
 
 ---
 
-## 📚 Resources
+## Resources
 
 ### Vue 3
 - [Vue 3 Guide](https://vuejs.org/guide/introduction.html)
@@ -575,7 +575,7 @@ refactor: Simplify chat runtime
 
 ---
 
-## 🆘 Getting Help
+## Getting Help
 
 ### Issues & Discussions
 - Check [GitHub Issues](https://github.com/clictltl/chatbot/issues)
@@ -587,7 +587,7 @@ refactor: Simplify chat runtime
 
 ---
 
-## 📝 Common Tasks
+## Common Tasks
 
 ### Add a New Modal
 
@@ -614,6 +614,6 @@ refactor: Simplify chat runtime
 
 ---
 
-**Happy coding! 🚀**
+**Happy coding!**
 
 For more info, see [README.md](./README.md) and [DEPLOY.md](./DEPLOY.md)
