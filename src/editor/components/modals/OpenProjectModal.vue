@@ -55,9 +55,6 @@ const projects = useProjects();
  */
 const { projectsList, error } = toRefs(projects);
 
-// DEBUG TEMPORÁRIO
-console.log("Modal abriu. Lista atual:", projectsList.value);
-
 /**
  * Fecha o modal
  */

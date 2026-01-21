@@ -15,6 +15,7 @@ declare global {
     CLIC_CHATBOT?: {
       rest_root: string;
       app_url: string;
+      wp_rest_root: string;
       [key: string]: any; // se no futuro quiser incluir mais campos
     };
   }

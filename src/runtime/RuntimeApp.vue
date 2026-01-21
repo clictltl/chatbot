@@ -64,6 +64,7 @@ async function loadProject() {
     runtime.value = useChatRuntime({
       blocks: data.blocks,
       variables: data.variables,
+      assets: data.assets
     });
   } catch {
     fatalError.value = 'NETWORK_ERROR';

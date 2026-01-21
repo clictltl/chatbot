@@ -8,6 +8,7 @@ export interface ProjectAsset {
   hash: string;
   source: 'local' | 'remote';
   url?: string;
+  externalId?: number; // ID do anexo no WordPress
 }
 
 export interface ProjectData {
