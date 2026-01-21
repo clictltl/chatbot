@@ -5,8 +5,9 @@
  * Representa um bloco individual no canvas com handles de entrada e saída
  */
 
-import { computed } from 'vue';
+import { computed, onBeforeUnmount } from 'vue';
 import type { Block } from '@/shared/types/chatbot';
+import { useAssetStore } from '@/editor/utils/useAssetStore';
 
 const props = defineProps<{
   block: Block;
@@ -66,6 +67,38 @@ const blockColor = computed(() => {
     case "image": return "#ec4899";
     case "end": return "#ef4444";
     default: return "#6b7280";
+  }
+});
+
+const assetStore = useAssetStore();
+
+// Computada que resolve a URL correta para exibição
+const resolvedImageSrc = computed(() => {
+  const b = props.block;
+  if (!b) return undefined;
+
+  // 1. Se tiver URL externa explícita
+  if (b.imageUrl) return b.imageUrl;
+
+  // 2. Se tiver ID de asset, pede a URL ao store
+  if (b.assetId) {
+    return assetStore.getAssetSrc(b.assetId);
+  }
+
+  return undefined;
+});
+
+// --- GARBAGE COLLECTION AUTOMÁTICO ---
+onBeforeUnmount(() => {
+  // Se o bloco sendo destruído tem uma imagem associada
+  if (props.block.type === 'image' && props.block.assetId) {
+    
+    // Tenta limpar o asset.
+    // É CRUCIAL passar o props.block.id como segundo parâmetro (excludeBlockId).
+    // Motivo: Dependendo da ordem de renderização do Vue, no momento que este hook roda,
+    // o bloco ainda pode estar na lista global 'blocks'. Passando o ID, forçamos
+    // a função a ignorar este bloco na contagem de uso.
+    assetStore.deleteAssetIfUnused(props.block.assetId, props.block.id);
   }
 });
 
@@ -186,9 +219,10 @@ function handleDelete(event: MouseEvent) {
         <!-- Visualização para image -->
         <div v-if="block.type === 'image'" class="image-preview-block">
           <img
-            v-if="block.imageData || block.imageUrl"
-            :src="block.imageData || block.imageUrl"
+            v-if="resolvedImageSrc"
+            :src="resolvedImageSrc"
             alt="Preview"
+            style="max-width: 100%; border-radius: 4px;" 
           />
           <span v-else class="no-image">Nenhuma imagem definida</span>
         </div>

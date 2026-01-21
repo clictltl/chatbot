@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue';
+import { ref, watch, nextTick, computed } from 'vue';
 import type { Block } from '@/shared/types/chatbot';
+import { useAssetStore } from '@/editor/utils/useAssetStore';
 
 const props = defineProps<{
   block: Block | null;
@@ -12,13 +13,20 @@ const emit = defineEmits<{
 }>();
 
 const localBlock = ref<Block | null>(null);
-const fileInput = ref<HTMLInputElement | null>(null);
 const mainTextareaRef = ref<HTMLTextAreaElement | null>(null);
-
+const assetStore = useAssetStore();
+const imageTab = ref<'url' | 'upload'>('url'); 
+const fileInput = ref<HTMLInputElement | null>(null);
+const uploadError = ref<string | null>(null);
 
 watch(() => props.block, (newBlock) => {
   if (newBlock) {
     localBlock.value = JSON.parse(JSON.stringify(newBlock));
+
+    // Se já tiver assetId, abre na aba Upload. Caso contrário, URL.
+    if (newBlock.type === 'image') {
+      imageTab.value = newBlock.assetId ? 'upload' : 'url';
+    }
   } else {
     localBlock.value = null;
   }
@@ -71,33 +79,95 @@ function removeCondition(condId: string) {
   }
 }
 
-function handleImageUpload(event: Event) {
-  const target = event.target as HTMLInputElement;
-  const file = target.files?.[0];
-  if (!file || !localBlock.value) return;
-
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    if (localBlock.value && e.target?.result) {
-      localBlock.value.imageData = e.target.result as string;
-      localBlock.value.imageUrl = undefined;
-      updateBlock();
-    }
-  };
-  reader.readAsDataURL(file);
+function setTab(tab: 'url' | 'upload') {
+  imageTab.value = tab;
+  uploadError.value = null;
+  // Opcional: Limpar o campo do outro tipo quando troca de aba?
+  // Geralmente é melhor não limpar automaticamente para não frustrar o usuário caso ele clique errado.
+  // Vamos limpar apenas quando um novo valor for efetivamente definido.
 }
 
-function clearImage() {
-  if (localBlock.value) {
+function handleUrlInput() {
+  if (!localBlock.value) return;
+  // Se digitou URL, limpa o assetId para garantir consistência
+
+  // Se tinha uma imagem local antes, captura o ID
+  const oldAssetId = localBlock.value.assetId;
+  
+  localBlock.value.assetId = undefined; 
+  updateBlock();
+
+  // Tenta limpar
+  if (oldAssetId) {
+    assetStore.deleteAssetIfUnused(oldAssetId, localBlock.value.id);
+  }
+}
+
+async function handleImageUpload(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const file = target.files?.[0];
+
+  uploadError.value = null;
+  
+  if (!file || !localBlock.value) return;
+
+  // Captura o ID antigo antes de substituir
+  const oldAssetId = localBlock.value.assetId;
+
+  try {
+    // Agora aguardamos o cálculo do hash
+    const assetId = await assetStore.addAssetFile(file);
+
+    // Atualiza Bloco
+    localBlock.value.assetId = assetId;
     localBlock.value.imageUrl = undefined;
-    localBlock.value.imageData = undefined;
+
+    // Tenta limpar o antigo (se houver e for diferente do novo)
+    if (oldAssetId && oldAssetId !== assetId) {
+      assetStore.deleteAssetIfUnused(oldAssetId, localBlock.value.id);
+    }
+    
     updateBlock();
+    
+  } catch (error) {
+    uploadError.value = (error as Error).message || "Erro desconhecido ao carregar imagem.";
+  } finally {
+    // Reset do input sempre acontece
+    target.value = '';
   }
 }
 
 function openFileDialog() {
-  fileInput.value?.click();
+  // Garante que o input existe antes de clicar
+  nextTick(() => {
+    fileInput.value?.click();
+  });
 }
+
+function clearImage() {
+  if (localBlock.value) {
+
+    // Captura o ID antes de limpar
+    const oldAssetId = localBlock.value.assetId;
+    
+    localBlock.value.imageUrl = undefined;
+    localBlock.value.assetId = undefined;
+    updateBlock();
+
+    // Chama a limpeza
+    if (oldAssetId) {
+      assetStore.deleteAssetIfUnused(oldAssetId, localBlock.value.id);
+    }
+  }
+}
+
+// Computed para o preview (mais limpo que função)
+const previewSrc = computed(() => {
+  if (!localBlock.value) return undefined;
+  if (localBlock.value.imageUrl) return localBlock.value.imageUrl;
+  if (localBlock.value.assetId) return assetStore.getAssetSrc(localBlock.value.assetId);
+  return undefined;
+});
 
 function focusContent() {
   nextTick(() => {
@@ -122,10 +192,11 @@ defineExpose({ focusContent });
       </div>
 
       <div v-if="localBlock.type !== 'start'
-  && localBlock.type !== 'end'
-  && localBlock.type !== 'setVariable'
-  && localBlock.type !== 'math'
-  && localBlock.type !== 'image'" class="property-group">
+        && localBlock.type !== 'end'
+        && localBlock.type !== 'setVariable'
+        && localBlock.type !== 'math'
+        && localBlock.type !== 'image'" class="property-group"
+      >
         <label>{{ localBlock.type === 'message' ? 'Mensagem' : 'Pergunta' }}</label>
         <textarea
           ref="mainTextareaRef"
@@ -254,50 +325,73 @@ defineExpose({ focusContent });
 
       <div v-if="localBlock.type === 'image'" class="property-group">
         <label>Fonte da Imagem</label>
+        
+        <!-- Abas de Navegação -->
         <div class="image-source-tabs">
           <button
-            @click="localBlock.imageData = undefined; updateBlock()"
-            :class="{ active: !localBlock.imageData }"
+            type="button"
+            @click="setTab('url')"
+            :class="{ active: imageTab === 'url' }"
             class="tab-button"
           >
-            URL
+            Link (URL)
           </button>
           <button
-            @click="localBlock.imageUrl = undefined; updateBlock()"
-            :class="{ active: localBlock.imageData }"
+            type="button"
+            @click="setTab('upload')"
+            :class="{ active: imageTab === 'upload' }"
             class="tab-button"
           >
             Upload
           </button>
         </div>
 
-        <div v-if="!localBlock.imageData" class="image-url-input">
+        <!-- Conteúdo: Modo URL -->
+        <div v-if="imageTab === 'url'" class="tab-content">
           <input
             v-model="localBlock.imageUrl"
-            @input="updateBlock"
-            placeholder="https://exemplo.com/imagem.jpg"
+            @input="handleUrlInput"
+            placeholder="https://exemplo.com/foto.jpg"
             type="url"
+            class="full-width-input"
           />
-          <small>Cole a URL de uma imagem da web</small>
+          <small class="help-text">Cole o link direto de uma imagem na internet.</small>
         </div>
 
-        <div v-else class="image-upload-input">
-          <button @click="openFileDialog" class="upload-button" type="button">
-            📁 Escolher Arquivo
-          </button>
+        <!-- Conteúdo: Modo Upload -->
+        <div v-if="imageTab === 'upload'" class="tab-content upload-area">
+          <div class="upload-controls">
+             <button @click="openFileDialog" class="btn-primary-outline" type="button">
+              ☁️ Carregar Imagem
+            </button>
+            <span v-if="localBlock.assetId" class="file-status">Arquivo carregado</span>
+            <span v-else class="file-status">Nenhum arquivo</span>
+          </div>
+
+          <div v-if="uploadError" class="error-message">
+            ⚠️ {{ uploadError }}
+          </div>
+          
+          <!-- Input Invisível -->
           <input
             ref="fileInput"
             type="file"
-            accept="image/*"
+            accept="image/png, image/jpeg, image/gif, image/webp"
             @change="handleImageUpload"
             style="display: none;"
           />
-          <small>Formatos aceitos: JPG, PNG, GIF, WebP</small>
+          <small>A imagem será salva junto com o projeto.</small>
         </div>
 
-        <div v-if="localBlock.imageUrl || localBlock.imageData" class="image-preview">
-          <img :src="localBlock.imageData || localBlock.imageUrl" alt="Preview" />
-          <button @click="clearImage" class="btn-clear">Remover Imagem</button>
+        <!-- Preview Unificado (Sempre visível se houver imagem) -->
+        <div v-if="previewSrc" class="image-preview-container">
+          <label>Pré-visualização:</label>
+          <div class="preview-box">
+            <img :src="previewSrc" alt="Preview" />
+            <button @click="clearImage" class="btn-remove-image" title="Remover imagem">
+              ×
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -463,62 +557,136 @@ defineExpose({ focusContent });
   border-color: #3b82f6;
 }
 
-.image-url-input,
-.image-upload-input {
+/* Estilos para as abas de Imagem */
+.image-source-tabs {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  margin-bottom: 10px;
+  background: #f0f0f0;
+  border-radius: 6px;
+  padding: 4px;
+  gap: 4px;
 }
 
-.upload-button {
-  padding: 8px 16px;
-  background: #3b82f6;
-  color: white;
+.tab-button {
+  flex: 1;
   border: none;
-  border-radius: 6px;
+  background: transparent;
+  padding: 8px;
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  text-align: center;
-  transition: background 0.2s;
+  font-size: 0.9rem;
+  color: #666;
+  transition: all 0.2s;
+}
+
+.tab-button.active {
+  background: white;
+  color: #2c3e50;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.tab-content {
+  display: flex;
+  flex-direction: column; 
+  gap: 6px; /* Espaço entre o input e o texto */
+  margin-top: 10px;
+}
+
+.full-width-input {
   width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
 }
 
-.upload-button:hover {
-  background: #2563eb;
+.help-text {
+  color: #666;
+  font-size: 0.8rem;
+  margin-left: 2px; /* Ligeiro alinhamento visual */
 }
 
-.image-preview {
-  margin-top: 12px;
-  padding: 12px;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
+/* Área de Upload */
+.upload-area {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.image-preview img {
-  width: 100%;
-  max-height: 200px;
-  object-fit: contain;
-  border-radius: 4px;
+.upload-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.btn-clear {
-  padding: 6px 12px;
-  background: #ef4444;
-  color: white;
-  border: none;
+.btn-primary-outline {
+  border: 1px solid #4caf50;
+  color: #4caf50;
+  background: white;
+  padding: 8px 16px;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
-  transition: background 0.2s;
+}
+.btn-primary-outline:hover {
+  background: #f1f8f1;
 }
 
-.btn-clear:hover {
-  background: #dc2626;
+.file-status {
+  font-size: 0.8rem;
+  color: #888;
+}
+
+/* Preview */
+.image-preview-container {
+  margin-top: 16px;
+  border-top: 1px solid #eee;
+  padding-top: 12px;
+}
+
+.preview-box {
+  position: relative;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #fff;
+  display: flex;
+  justify-content: center;
+  background-image: radial-gradient(#e5e5e5 1px, transparent 1px);
+  background-size: 10px 10px;
+}
+
+.preview-box img {
+  max-width: 100%;
+  max-height: 200px;
+  object-fit: contain;
+}
+
+.btn-remove-image {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background: rgba(0,0,0,0.6);
+  color: white;
+  border: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn-remove-image:hover {
+  background: red;
+}
+
+.error-message {
+  color: #d32f2f;
+  background-color: #ffebee;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  margin-top: 8px;
+  border: 1px solid #ffcdd2;
 }
 </style>

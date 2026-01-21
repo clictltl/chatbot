@@ -34,8 +34,8 @@ export interface Block {
   conditions?: Condition[];               // Condições a avaliar (apenas para condition)
   mathOperation?: "+" | "-" | "*" | "/";  // Operação matemática (para math)
   mathValue?: string;                     // Valor ou variável para operação (para math)
-  imageUrl?: string;                      // URL da imagem (para image)
-  imageData?: string;                     // Dados base64 da imagem (para image com upload)
+  imageUrl?: string;                      // Para URLs externas (http://...)
+  assetId?: string;                       // ID para assets gerenciados (upload local)
   nextBlockId?: string;                   // ID do próximo bloco (quando aplicável)
 }
 

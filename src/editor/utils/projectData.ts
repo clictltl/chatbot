@@ -1,7 +1,7 @@
 // src/editor/projectData.ts
 import { ref } from 'vue';
 import type { Block, Connection, Variable } from '@/shared/types/chatbot';
-import type { ProjectData } from '@/shared/types/project';
+import type { ProjectData, ProjectAsset } from '@/shared/types/project';
 
 /**
  * Estado reativo do editor
@@ -57,6 +57,7 @@ export const connections = ref<Connection[]>([
 ]);
 
 export const variables = ref<Record<string, Variable>>({});
+export const assets = ref<Record<string, ProjectAsset>>({});
 export const selectedBlockId = ref<string | null>(null);
 
 /**
@@ -66,7 +67,8 @@ export function getProjectData(): ProjectData {
   return {
     blocks: blocks.value,
     connections: connections.value,
-    variables: variables.value
+    variables: variables.value,
+    assets: assets.value
   };
 }
 
@@ -85,6 +87,12 @@ export function setProjectData(data: ProjectData) {
 
   if (data.variables && typeof data.variables === 'object') {
     variables.value = data.variables;
+  }
+
+  if (data.assets && typeof data.assets === 'object') {
+    assets.value = data.assets;
+  } else {
+    assets.value = {};
   }
 
   selectedBlockId.value = null;
@@ -114,5 +122,6 @@ export function resetProjectData() {
   ];
 
   variables.value = {};
+  assets.value = {};
   selectedBlockId.value = null;
 }

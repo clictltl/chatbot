@@ -17,9 +17,8 @@
 
 import { ref, nextTick, watch, computed } from 'vue';
 import type { Block, Variable } from '@/shared/types/chatbot';
-
-// engine
 import { useChatRuntime } from '@/runtime/engine/useChatRuntime';
+import { useAssetStore } from '@/editor/utils/useAssetStore';
 
 const props = defineProps<{
   blocks: Block[];
@@ -31,22 +30,26 @@ const emit = defineEmits<{
   'update:variables': [variables: Record<string, Variable>];
 }>();
 
-const runtime = ref<ReturnType<typeof useChatRuntime>>(
-  useChatRuntime({
+const assetStore = useAssetStore();
+
+// Centraliza a configuração para evitar repetição
+function getRuntimeOptions() {
+  return {
     blocks: props.blocks,
     variables: props.variables,
     onVariablesChange: handleVariablesChange,
-  })
+    resolveAsset: (id: string) => assetStore.getAssetSrc(id)
+  };
+}
+
+const runtime = ref<ReturnType<typeof useChatRuntime>>(
+  useChatRuntime(getRuntimeOptions())
 );
 
 const r = computed(() => runtime.value);
 
 function createRuntime() {
-  runtime.value = useChatRuntime({
-    blocks: props.blocks,
-    variables: props.variables,
-    onVariablesChange: handleVariablesChange,
-  });
+  runtime.value = useChatRuntime(getRuntimeOptions());
 }
 
 watch(

@@ -1,23 +1,24 @@
 import { ref } from 'vue';
 import type { Block, Variable, ChatMessage } from '@/shared/types/chatbot';
+import type { ProjectAsset } from '@/shared/types/project';
 import { interpolateText, evaluateCondition } from '@/shared/utils/interpolation';
 
 type UseChatRuntimeOptions = {
   blocks: Block[];
   variables: Record<string, Variable>;
+  assets?: Record<string, ProjectAsset>; // Metadados (importante para Remote)
+  resolveAsset?: (id: string) => string | undefined;
   onVariablesChange?: (vars: Record<string, Variable>) => void;
 };
 
 export function useChatRuntime(options: UseChatRuntimeOptions) {
-  const { blocks, variables, onVariablesChange } = options;
+  const { blocks, variables, assets, resolveAsset, onVariablesChange } = options;
 
   // ===== Estado (espelha PreviewPanel) =====
   const messages = ref<ChatMessage[]>([]);
   const currentBlockId = ref<string | null>(null);
   const isWaitingForInput = ref(false);
-  const currentChoices = ref<
-    { id: string; label: string; nextBlockId?: string }[]
-  >([]);
+  const currentChoices = ref<{ id: string; label: string; nextBlockId?: string }[]>([]);
   const isRunning = ref(false);
   const sessionVariables = ref<Record<string, Variable>>({});
   const runId = ref(0);
@@ -310,9 +311,30 @@ export function useChatRuntime(options: UseChatRuntimeOptions) {
       }
 
       case 'image': {
-        const url = block.imageData || block.imageUrl;
-        if (url) addImageMessage(url);
-        else addErrorMessage('IMAGE_NOT_DEFINED');
+        let url = block.imageUrl;
+
+        // Se não for URL direta, tenta resolver o assetId
+        if (!url && block.assetId) {
+          // 1. Tenta usar o resolvedor injetado (Editor Preview - Blob Local)
+          if (resolveAsset) {
+            url = resolveAsset(block.assetId);
+          }
+
+          // 2. Fallback para metadados remotos (Production Runtime - URL pública)
+          if (!url && assets && assets[block.assetId]) {
+            const asset = assets[block.assetId];
+            if (asset.source === 'remote' && asset.url) {
+              url = asset.url;
+            }
+          }
+        }
+
+        if (url) {
+          addImageMessage(url);
+        } else {
+          addErrorMessage('IMAGE_NOT_DEFINED');
+        }
+
         setTimeout(() => {
           if (!isRunning.value || runId.value !== myRun) return;
           goToNext(block);
