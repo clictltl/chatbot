@@ -56,11 +56,13 @@
 import { ref, watch } from 'vue';
 import { useAuth } from '@/editor/auth';
 import { getProjectData } from '@/editor/utils/projectData';
+import { useAssetStore } from '@/editor/utils/useAssetStore';
 import { decodeHtml } from '@/shared/utils/decodeHtml';
 
 
 // Estado auth (singleton)
 const auth = useAuth();
+const assetStore = useAssetStore();
 
 // Modal e campos
 const showLogin = ref(false);
@@ -122,11 +124,14 @@ async function submitLogin() {
     const data = await res.json();
 
     if (res.ok && data.success) {
-      // Backup temporário do projeto antes do reload (estilo Scratch)
+      // 1. Salva Blobs no IndexedDB (Suporta > 100MB)
+      await assetStore.persistToDisk(); 
+
+      // 2. Backup do JSON no SessionStorage (Texto leve)
       const project = getProjectData();
       sessionStorage.setItem('clic-chatbot:login-backup', JSON.stringify(project));
 
-      // Reload para atualizar auth/menu sem perder conteúdo
+      // 3. Reload
       window.location.reload();
       return;
     }

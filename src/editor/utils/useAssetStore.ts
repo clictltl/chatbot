@@ -21,6 +21,25 @@ const MAGIC_BYTES: Record<string, string> = {
   '52494646': 'image/webp'      // RIFF (WebP começa com RIFF)
 };
 
+// --- CONFIGURAÇÃO INDEXED DB (PERSISTÊNCIA TEMPORÁRIA) ---
+const DB_NAME = 'ClicChatbot_TempAssets';
+const STORE_NAME = 'local_blobs';
+const DB_VERSION = 1;
+
+function getDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = (event: any) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME); // Key = AssetID, Value = Blob
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
 // --- FUNÇÃO DE VALIDAÇÃO ---
 async function validateFileSecurity(file: File): Promise<void> {
   // 1. Verificação de Tamanho
@@ -189,12 +208,101 @@ export function useAssetStore() {
     Object.keys(blobRegistry).forEach(key => delete blobRegistry[key]);
   }
 
+  /**
+   * Salva todos os Blobs locais no IndexedDB
+   * (Chamado antes do reload de login)
+   */
+  async function persistToDisk() {
+    const localAssets = Object.values(assets.value).filter(a => a.source === 'local');
+    if (localAssets.length === 0) return;
+
+    // 1. Pré-carregamento: Busca todos os blobs para a memória RAM antes de tocar no banco
+    // Isso evita o erro "Transaction inactive" causado pelo await dentro da transação
+    const blobsToSave: { id: string; blob: Blob }[] = [];
+    
+    for (const asset of localAssets) {
+      const blob = await getAssetBlob(asset.id);
+      if (blob) {
+        blobsToSave.push({ id: asset.id, blob });
+      }
+    }
+
+    if (blobsToSave.length === 0) return;
+
+    const db = await getDB();
+    
+    // 2. Limpa banco antigo
+    const txClear = db.transaction(STORE_NAME, 'readwrite');
+    txClear.objectStore(STORE_NAME).clear();
+    await new Promise(resolve => { txClear.oncomplete = resolve; });
+
+    // 3. Gravação Síncrona (do ponto de vista do Event Loop)
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+
+    // Agora o loop é rápido e sem 'await', mantendo a transação viva
+    for (const item of blobsToSave) {
+      store.put(item.blob, item.id);
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  /**
+   * Recupera Blobs do IndexedDB e reinjeta na memória
+   * (Chamado no onMounted se houver backup)
+   */
+  async function restoreFromDisk() {
+    const db = await getDB();
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const store = tx.objectStore(STORE_NAME);
+    const request = store.getAllKeys();
+
+    const keys = await new Promise<string[]>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result as string[]);
+      request.onerror = () => reject(request.error);
+    });
+
+    for (const key of keys) {
+      const getReq = store.get(key);
+      const blob = await new Promise<Blob>((resolve) => {
+        getReq.onsuccess = () => resolve(getReq.result);
+      });
+
+      if (blob) {
+        registerBlob(key, blob);
+      }
+    }
+  }
+
+  /**
+   * Limpa o armazenamento temporário do disco (IndexedDB)
+   */
+  async function clearDisk() {
+    const db = await getDB();
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    
+    store.clear();
+
+    return new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
   return {
     addAssetFile,
     deleteAssetIfUnused,
     getAssetSrc,
     registerBlob,
     getAssetBlob,
-    clearRegistry
+    clearRegistry,
+    persistToDisk,
+    restoreFromDisk,
+    clearDisk
   };
 }

@@ -12,6 +12,7 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import type { Block, BlockType } from '@/shared/types/chatbot';
 import { blocks, connections, variables, selectedBlockId, setProjectData } from '@/editor/utils/projectData';
+import { useAssetStore } from '@/editor/utils/useAssetStore';
 import Canvas from '@/editor/components/canvas/Canvas.vue';
 import PropertiesPanel from '@/editor/components/panels/PropertiesPanel.vue';
 import VariablesPanel from '@/editor/components/panels/VariablesPanel.vue';
@@ -20,6 +21,7 @@ import AuthMenu from '@/editor/components/layout/AuthMenu.vue';
 import FileMenu from '@/editor/components/layout/FileMenu.vue';
 import clicLogo from '@/assets/logo-clic.svg'
 
+const assetStore = useAssetStore();
 
 const zoom = ref(100);
 const activeTab = ref<'properties' | 'variables' | 'preview'>('properties');
@@ -42,16 +44,27 @@ const selectedBlock = computed(() => {
   return blocks.value.find(b => b.id === selectedBlockId.value) || null;
 });
 
-onMounted(() => {
-  // Restaura o projeto salvo temporariamente (ex: após login com reload),
-  // substituindo o estado inicial do editor se existir backup.
+onMounted(async () => {
+  // Verifica se há backup de login (JSON)
   const saved = sessionStorage.getItem('clic-chatbot:login-backup');
+
   if (saved) {
     try {
+      // Restaura os binários para a memória RAM
+      // Isso garante que quando o JSON carregar, as URLs de blob já existam na memória
+      await assetStore.restoreFromDisk();
+
+      // Restaura o projeto
       setProjectData(JSON.parse(saved));
+
+      // Remove do SessionStorage (texto)
       sessionStorage.removeItem('clic-chatbot:login-backup');
+      
+      // Remove do IndexedDB (disco) para liberar espaço
+      await assetStore.clearDisk(); 
+
     } catch (e) {
-      console.error('Erro ao restaurar projeto após login', e);
+      console.error('Erro ao restaurar projeto após login:', e);
     }
   }
 
@@ -61,7 +74,7 @@ onMounted(() => {
   // Adiciona listener para fechar menus ao clicar fora
   document.addEventListener('click', handleDocumentClick);
 
-  // ✅ garante start block
+  // Garante start block
   const hasStart = blocks.value.some(b => b.type === 'start');
   if (!hasStart) {
     const startBlock: Block = {
