@@ -294,6 +294,44 @@ export function useAssetStore() {
     });
   }
 
+  /**
+   * Transforma assets REMOTOS em LOCAIS (Blobs).
+   * Usado ao carregar um projeto compartilhado (Share) para que o novo usuário
+   * se torne dono dos arquivos ao salvar.
+   */
+  async function privatizeRemoteAssets() {
+    const promises = Object.entries(assets.value).map(async ([id, asset]) => {
+      // Só nos interessa o que for remoto
+      if (asset.source !== 'remote' || !asset.url) return;
+
+      try {
+        // 1. Baixa a imagem do servidor original
+        const res = await fetch(asset.url);
+        if (!res.ok) throw new Error(`Falha ao baixar: ${res.statusText}`);
+        
+        const blob = await res.blob();
+
+        // 2. Registra na memória local (cria Blob URL)
+        registerBlob(id, blob);
+
+        // 3. Atualiza o objeto do asset para parecer um upload novo
+        asset.source = 'local';
+        delete asset.url;        // Remove o link para o servidor do outro usuário
+        delete asset.externalId; // Remove o ID do banco do outro usuário
+        
+        // Nota: Mantemos o hash original. Isso ajuda na desduplicação
+        // se este usuário já tiver essa mesma imagem na conta dele!
+
+      } catch (err) {
+        console.error(`Erro ao privatizar asset ${asset.originalName}:`, err);
+        // Em caso de erro, mantemos como remote para não quebrar a visualização imediata,
+        // mas o risco de link quebrado futuro permanece para essa imagem específica.
+      }
+    });
+
+    await Promise.all(promises);
+  }
+
   return {
     addAssetFile,
     deleteAssetIfUnused,
@@ -303,6 +341,7 @@ export function useAssetStore() {
     clearRegistry,
     persistToDisk,
     restoreFromDisk,
-    clearDisk
+    clearDisk,
+    privatizeRemoteAssets
   };
 }

@@ -369,6 +369,47 @@ async function shareProject() {
   }
 }
 
+async function loadSharedProject(token: string) {
+  loading.value = true;
+  error.value = null;
+
+  try {
+    const restRoot = window.CLIC_CHATBOT?.rest_root ?? '/wp-json/clic-chatbot/v1/';
+    
+    // 1. Busca na API
+    const res = await fetch(restRoot + 'share/' + token);
+    const data = await res.json();
+
+    if (!data.success) {
+      error.value = data.error || 'Erro ao carregar compartilhamento';
+      return false;
+    }
+
+    // 2. Limpa memória anterior
+    assetStore.clearRegistry();
+
+    // 3. Aplica os dados no Editor
+    setProjectData(data.project.data);
+
+    // 4. "Privatiza" os assets (Baixa e converte para Blob Local)
+    // Isso garante que se o usuário salvar, as imagens serão dele.
+    await assetStore.privatizeRemoteAssets();
+
+    // 5. Configura como um projeto "Novo" (sem ID vinculado ao banco)
+    currentProjectId.value = null;
+    currentProjectName.value = ''; // ou data.project.name se quiser sugerir o nome original
+
+    return true;
+
+  } catch (err: any) {
+    console.error("Erro no loadSharedProject:", err);
+    error.value = err.message;
+    return false;
+  } finally {
+    loading.value = false;
+  }
+}
+
 /**
  * ---------------------------------------------------
  * PUBLICAR
@@ -436,6 +477,7 @@ const projectsStore = {
   loadProject,
   deleteProject,
   shareProject,
+  loadSharedProject,
   publishProject,
 };
 

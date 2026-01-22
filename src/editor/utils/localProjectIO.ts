@@ -9,30 +9,64 @@ const assetStore = useAssetStore();
  * EXPORTAR: Cria arquivo .clic (ZIP)
  */
 export async function exportToComputer(filename = 'meu-chatbot') {
-  const project = getProjectData();
-  const zip = new JSZip();
-
-  // 1. JSON Principal
-  zip.file('project.json', JSON.stringify(project, null, 2));
-
-  // 2. Pasta de Assets
-  const assetsFolder = zip.folder('assets');
+  // Clona o projeto para não alterar o estado "vivo" do editor
+  // Precisamos modificar o JSON que vai para o ZIP (remote -> local)
+  const originalData = getProjectData();
+  const projectToSave = JSON.parse(JSON.stringify(originalData)) as ProjectData;
   
-  if (project.assets && assetsFolder) {
-    for (const [id, asset] of Object.entries(project.assets)) {
-      // Salva apenas se for 'local'. Se for remote, já está na web.
-      if (asset.source === 'local') {
-        const blob = await assetStore.getAssetBlob(id);
+  const zip = new JSZip();
+  const assetsFolder = zip.folder('assets');
+
+  // Processar Assets (Local e Remoto)
+  if (projectToSave.assets && assetsFolder) {
+    const assetPromises = Object.entries(projectToSave.assets).map(async ([id, asset]) => {
+      
+      try {
+        let blob: Blob | null = null;
+
+        // CASO A: Asset já é local (está na memória/IndexedDB)
+        if (asset.source === 'local') {
+          blob = await assetStore.getAssetBlob(id);
+        }
+        
+        // CASO B: Asset é remoto (URL do WordPress) -> Baixar e converter para Local
+        else if (asset.source === 'remote' && asset.url) {
+          const res = await fetch(asset.url);
+          if (res.ok) {
+            blob = await res.blob();
+            
+            // Transforma o asset em 'local' DENTRO DO ZIP
+            // Assim, ao importar, ele não dependerá mais da internet/WP
+            asset.source = 'local';
+            delete asset.url;       // Remove a URL antiga
+            delete asset.externalId; // Remove vínculo com ID do WP
+          } else {
+            console.warn(`Não foi possível baixar asset remoto: ${asset.url}`);
+          }
+        }
+
+        // Se conseguimos o blob (seja local ou baixado agora), salva no ZIP
         if (blob) {
-          // Detecta extensão pelo mime type
+          // Garante extensão correta
           const ext = asset.type.split('/')[1] || 'bin';
           assetsFolder.file(`${id}.${ext}`, blob);
         }
+
+      } catch (err) {
+        console.error(`Erro ao processar asset ${id} para exportação:`, err);
+        // Em caso de erro, o asset permanece como 'remote' no JSON,
+        // garantindo que o link original não se perca.
       }
-    }
+    });
+
+    // Aguarda todos os downloads/leituras terminarem
+    await Promise.all(assetPromises);
   }
 
-  // 3. Gerar e Baixar
+  // Salva o JSON modificado (onde tudo que baixamos virou 'local')
+  zip.file('project.json', JSON.stringify(projectToSave, null, 2));
+
+  // Gerar e Baixar
   const content = await zip.generateAsync({ type: 'blob' });
   const url = URL.createObjectURL(content);
 
