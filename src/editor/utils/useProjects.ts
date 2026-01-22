@@ -48,18 +48,17 @@ async function uploadPendingAssets() {
       // DESDUPLICAÇÃO GLOBAL
       let existingMedia = null;
       if (asset.hash) {
-        // Busca na API de mídia por imagens que tenham o hash na descrição
-        const searchRes = await fetch(`${wpRestRoot}wp/v2/media?search=${asset.hash}`, {
+        // Usa a rota customizada rápida
+        const searchRes = await fetch(`${pluginRestRoot}media/find-by-hash?hash=${asset.hash}`, {
             method: 'GET',
             headers: { 'X-WP-Nonce': nonce }
         });
         
         if (searchRes.ok) {
-            const searchResults = await searchRes.json();
-            // Confirmação exata (pois a busca do WP é aproximada)
-            existingMedia = searchResults.find((m: any) => 
-                m.description?.rendered?.includes(asset.hash)
-            );
+            const data = await searchRes.json();
+            if (data.found) {
+                existingMedia = { id: data.id, source_url: data.source_url };
+            }
         }
       }
 
@@ -73,12 +72,16 @@ async function uploadPendingAssets() {
         // Prepara o Payload no padrão do WordPress
         const formData = new FormData();
         formData.append('file', blob, asset.originalName);
+        formData.append('description', 'Chatbot Asset'); 
         // Opcional: Adicionar legenda ou texto alternativo
         // formData.append('alt_text', 'Imagem do Chatbot CLIC');
         
-        // Salvamos o Hash na descrição para permitir a desduplicação futura
-        formData.append('description', asset.hash); 
-        formData.append('caption', 'Chatbot Asset'); 
+        // TRUQUE DO METADADO:
+        // Como registramos '_clic_chatbot_image_hash' com 'show_in_rest' no PHP,
+        // podemos passar 'meta' como array serializado se a API aceitar, 
+        // ou usar o endpoint de update logo após o upload.
+        // A API /wp/v2/media POST nem sempre aceita o campo 'meta' no FormData de multipart/form-data facilmente.
+        // Estratégia Robusta: Upload Primeiro -> Update Meta Segundo
 
         // Envia para API Nativa (/wp/v2/media)
         // O WordPress gerencia segurança, autor, pasta e thumbnails aqui.
@@ -90,6 +93,22 @@ async function uploadPendingAssets() {
 
         if (!res.ok) throw new Error(res.statusText);
         wpMedia = await res.json();
+
+        // ATUALIZA O METADADO
+        if (asset.hash) {
+           await fetch(`${wpRestRoot}wp/v2/media/${wpMedia.id}`, {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json',
+                'X-WP-Nonce': nonce 
+              },
+              body: JSON.stringify({
+                meta: {
+                  _clic_chatbot_image_hash: asset.hash
+                }
+              })
+           });
+        }
       }
 
       // Atualiza o Asset para Remote (Persistência)
