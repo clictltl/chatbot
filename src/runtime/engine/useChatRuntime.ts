@@ -14,7 +14,7 @@ type UseChatRuntimeOptions = {
 export function useChatRuntime(options: UseChatRuntimeOptions) {
   const { blocks, variables, assets, resolveAsset, onVariablesChange } = options;
 
-  // ===== Estado (espelha PreviewPanel) =====
+  // ===== Estado =====
   const messages = ref<ChatMessage[]>([]);
   const currentBlockId = ref<string | null>(null);
   const isWaitingForInput = ref(false);
@@ -28,11 +28,11 @@ export function useChatRuntime(options: UseChatRuntimeOptions) {
     onVariablesChange?.({ ...sessionVariables.value });
   }
 
-  // ===== add... (espelha PreviewPanel; sem scroll) =====
+  // ===== add... =====
   function addBotMessage(content: string) {
     const interpolated = interpolateText(content, sessionVariables.value);
     messages.value.push({
-      id: `msg_${Date.now()}`, // espelha PreviewPanel
+      id: `msg_${Date.now()}`,
       type: 'bot',
       content: interpolated,
     });
@@ -40,7 +40,7 @@ export function useChatRuntime(options: UseChatRuntimeOptions) {
 
   function addUserMessage(content: string) {
     messages.value.push({
-      id: `msg_${Date.now()}`, // espelha PreviewPanel
+      id: `msg_${Date.now()}`,
       type: 'user',
       content,
     });
@@ -48,7 +48,7 @@ export function useChatRuntime(options: UseChatRuntimeOptions) {
 
   function addErrorMessage(content: string) {
     messages.value.push({
-      id: `msg_${Date.now()}`, // espelha PreviewPanel
+      id: `msg_${Date.now()}`,
       type: 'bot',
       content: `${content}`, // prefixo alinhado
     });
@@ -56,20 +56,20 @@ export function useChatRuntime(options: UseChatRuntimeOptions) {
 
   function addImageMessage(url: string) {
     messages.value.push({
-      id: `msg_${Date.now()}`, // espelha PreviewPanel
+      id: `msg_${Date.now()}`,
       type: 'image',
       content: url,
     });
   }
 
-  // ===== Finalização natural (espelha PreviewPanel) =====
+  // ===== Finalização natural =====
   function endChat() {
     isWaitingForInput.value = false;
     currentChoices.value = [];
     isRunning.value = false;
   }
 
-  // ===== Cancelamento duro / reset total (espelha stopChat) =====
+  // ===== Cancelamento duro / reset total =====
   function stopChat() {
     // invalida callbacks pendentes
     runId.value++;
@@ -112,7 +112,7 @@ export function useChatRuntime(options: UseChatRuntimeOptions) {
     processBlock(startBlock);
   }
 
-  // ===== Envio de texto (espelha handleSendMessage) =====
+  // ===== Envio de texto =====
   function submitText(rawText: string) {
     const text = rawText.trim();
     if (!text || !isWaitingForInput.value) return;
@@ -158,7 +158,7 @@ export function useChatRuntime(options: UseChatRuntimeOptions) {
     }
   }
 
-  // ===== Escolha (espelha handleChoiceClick) =====
+  // ===== Escolha =====
   function selectChoice(choice: { id: string; label: string; nextBlockId?: string }) {
     addUserMessage(choice.label);
     currentChoices.value = [];

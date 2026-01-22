@@ -1,25 +1,20 @@
 import { reactive } from 'vue';
 import { assets, blocks } from './projectData'; // Acesso direto ao estado reativo
 import type { ProjectAsset } from '@/shared/types/project';
+import imageCompression from 'browser-image-compression';
+import { fileTypeFromBlob } from 'file-type';
 
-// --- CONFIGURAÇÃO DE SEGURANÇA ---
-const MAX_FILE_SIZE_MB = 2; // Limite de 2MB (bom para web)
+// --- CONFIGURAÇÃO ---
+const MAX_FILE_SIZE_MB = 2;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
+// Mime types permitidos (usados para validar o retorno do file-type)
 const ALLOWED_MIME_TYPES = [
   'image/jpeg', 
   'image/png', 
   'image/gif', 
   'image/webp'
 ];
-
-// Assinaturas Hexadecimais (Magic Bytes) para validação real
-const MAGIC_BYTES: Record<string, string> = {
-  'ffd8ff': 'image/jpeg',       // JPEG
-  '89504e47': 'image/png',      // PNG
-  '47494638': 'image/gif',      // GIF
-  '52494646': 'image/webp'      // RIFF (WebP começa com RIFF)
-};
 
 // --- CONFIGURAÇÃO INDEXED DB (PERSISTÊNCIA TEMPORÁRIA) ---
 const DB_NAME = 'ClicChatbot_TempAssets';
@@ -42,33 +37,21 @@ function getDB(): Promise<IDBDatabase> {
 
 // --- FUNÇÃO DE VALIDAÇÃO ---
 async function validateFileSecurity(file: File): Promise<void> {
-  // 1. Verificação de Tamanho
-  if (file.size > MAX_FILE_SIZE_BYTES) {
-    throw new Error(`O arquivo é muito grande. Máximo permitido: ${MAX_FILE_SIZE_MB}MB.`);
-  }
+  // O file-type lê o binário real do arquivo para determinar o tipo
+  // Ele ignora a extensão (.jpg) e o mime type reportado pelo navegador
+  const fileType = await fileTypeFromBlob(file);
 
-  // 2. Verificação de Extensão (MIME type reportado pelo browser)
-  if (!ALLOWED_MIME_TYPES.includes(file.type)) {
-    throw new Error(`Formato de arquivo não permitido. Use: JPG, PNG, GIF ou WebP.`);
-  }
-
-  // 3. Verificação de Magic Bytes (Deep Inspection)
-  // Lê os primeiros 4 bytes do arquivo para checar a assinatura real
-  const chunk = file.slice(0, 4);
-  const buffer = await chunk.arrayBuffer();
-  const header = new Uint8Array(buffer);
-  const hex = [...header].map(b => b.toString(16).padStart(2, '0')).join('');
-
-  // Verifica se o hex bate com algum dos permitidos
-  const isSignatureValid = Object.keys(MAGIC_BYTES).some(signature => {
-    return hex.toLowerCase().startsWith(signature);
-  });
-
-  if (!isSignatureValid) {
-    throw new Error('O arquivo parece estar corrompido ou mascara um formato inválido.');
+  // Se não conseguiu identificar ou não é um dos permitidos
+  if (!fileType || !ALLOWED_MIME_TYPES.includes(fileType.mime)) {
+    // Caso especial: às vezes o browser cria blobs sem assinatura clara (raro em imagens normais)
+    // mas se o file-type falhou, é sinal de perigo ou arquivo corrompido.
+    throw new Error(
+      `Formato de arquivo inválido ou corrompido. Detectado: ${fileType?.mime || 'Desconhecido'}.`
+    );
   }
 }
 
+// --- UTILS ---
 // Registro de Blobs em memória (Volátil: ID -> Blob URL)
 const blobRegistry = reactive<Record<string, string>>({});
 
@@ -84,39 +67,76 @@ export function useAssetStore() {
   
   /**
    * Registra um arquivo vindo de input (Upload Novo)
+   * 1. Valida Binário (file-type)
+   * 2. Comprime (browser-image-compression)
+   * 3. Calcula Hash
+   * 4. Salva
    */
   async function addAssetFile(file: File): Promise<string> {
     
-    // --> INJEÇÃO DE SEGURANÇA <--
-    // Se falhar aqui, lança erro e para tudo antes de calcular hash ou salvar
+    // 1. SEGURANÇA: Validação profunda do binário
     await validateFileSecurity(file);
 
-    // 1. Calcula a assinatura digital do arquivo
-    const fileHash = await computeFileHash(file);
+    let finalFile = file;
 
-    // 2. Procura por duplicata baseada no CONTEÚDO (Hash)
+    // 2. OTIMIZAÇÃO: Compressão Inteligente
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      if (file.type === 'image/gif') {
+        throw new Error(`GIF muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB). Limite: ${MAX_FILE_SIZE_MB}MB.`);
+      }
+
+      try {
+        console.log(`Comprimindo imagem de ${(file.size/1024/1024).toFixed(2)}MB...`);
+        
+        const options = {
+          maxSizeMB: MAX_FILE_SIZE_MB,
+          maxWidthOrHeight: 1920,
+          useWebWorker: true,
+          fileType: 'image/webp',
+          initialQuality: 0.8
+        };
+
+        const compressedBlob = await imageCompression(file, options);
+        
+        if (compressedBlob.size < MAX_FILE_SIZE_BYTES) {
+          finalFile = new File([compressedBlob], file.name.replace(/\.[^/.]+$/, "") + ".webp", {
+            type: 'image/webp',
+            lastModified: Date.now()
+          });
+          console.log(`Sucesso: ${(finalFile.size/1024/1024).toFixed(2)}MB`);
+        } else {
+          throw new Error(`A imagem continua muito grande (${(compressedBlob.size/1024/1024).toFixed(1)}MB) mesmo após compressão.`);
+        }
+
+      } catch (error: any) {
+        console.error('Erro na compressão:', error);
+        throw new Error(`Não foi possível processar esta imagem: ${error.message}`);
+      }
+    }
+
+    // 3. Calcula Hash do arquivo FINAL (Original ou Comprimido)
+    const fileHash = await computeFileHash(finalFile);
+
+    // 4. Procura duplicata
     for (const existingId in assets.value) {
       const asset = assets.value[existingId];
-      
       if (asset.hash === fileHash) {
-        // Se achou, verifica se o blob ainda está vivo na memória
-        // (Ou se é remoto, também serve)
         if (blobRegistry[existingId] || asset.source === 'remote') {
           return existingId;
         }
       }
     }
 
-    // 3. Se é novo, registra
+    // 5. Registra
     const assetId = crypto.randomUUID();
-    const blobUrl = URL.createObjectURL(file);
+    const blobUrl = URL.createObjectURL(finalFile);
     blobRegistry[assetId] = blobUrl;
 
     const newAsset: ProjectAsset = {
       id: assetId,
-      type: file.type,
-      originalName: file.name,
-      size: file.size,
+      type: finalFile.type,
+      originalName: finalFile.name,
+      size: finalFile.size,
       hash: fileHash,
       source: 'local'
     };
@@ -125,6 +145,7 @@ export function useAssetStore() {
 
     return assetId;
   }
+
 
   /**
    * Remove o asset se nenhum bloco estiver usando ele.
