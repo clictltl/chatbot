@@ -2,17 +2,20 @@
 /**
  * CANVAS - Área de trabalho onde os blocos são desenhados e conectados
  *
- * Funcionalidades:
- * - Pan (arrastar o canvas com Ctrl+Click ou botão do meio do mouse)
- * - Zoom (com o slider no toolbar)
- * - Arrastar blocos
- * - Criar conexões arrastando de um handle de saída para um handle de entrada
- * - Desenhar setas entre blocos
+ * Este componente foi refatorado e agora usa composables para organizar
+ * as responsabilidades em módulos menores e reutilizáveis.
  */
 
-import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick, toRef } from 'vue';
 import type { Block, Connection, BlockType } from '@/shared/types/chatbot';
 import BlockNode from './BlockNode.vue';
+import CanvasToolbar from './components/CanvasToolbar.vue';
+import ConnectionsLayer from './components/ConnectionsLayer.vue';
+import { useCanvasTransform } from './composables/useCanvasTransform';
+import { useConnectionGeometry } from './composables/useConnectionGeometry';
+import { useConnectionManager } from './composables/useConnectionManager';
+import { useWaypointEditor } from './composables/useWaypointEditor';
+import { useCanvasInteractions } from './composables/useCanvasInteractions';
 
 const props = defineProps<{
   blocks: Block[];
@@ -21,276 +24,142 @@ const props = defineProps<{
   zoom: number;
 }>();
 
-const showCanvasNewBlockMenu = ref(false);
-
-function getCanvasCenterWorldPosition(): { x: number; y: number } {
-  const rect = canvasRef.value?.getBoundingClientRect();
-  if (!rect) return { x: 120, y: 120 };
-
-  const zoom = props.zoom / 100;
-
-  // centro da área visível (tela -> mundo)
-  const x = (rect.width / 2 - panOffset.value.x) / zoom;
-  const y = (rect.height / 2 - panOffset.value.y) / zoom;
-
-  return { x, y };
-}
-
-function requestCreateBlock(type: BlockType) {
-  const pos = getCanvasCenterWorldPosition(); // ou pode usar mousePosition.value se preferir
-  emit('create-block', { type, position: pos });
-  showCanvasNewBlockMenu.value = false;
-}
-
 const emit = defineEmits<{
   'update:selectedBlockId': [id: string | null];
-  'focus-block-editor': []; // ✅ NOVO EVENTO
+  'focus-block-editor': [];
   'update:blocks': [blocks: Block[]];
   'update:connections': [connections: Connection[]];
   'update:zoom': [zoom: number];
   'context-menu': [position: { x: number; y: number; screenX: number; screenY: number }];
   'block-context-menu': [blockId: string, position: { x: number; y: number; screenX: number; screenY: number }];
-  // ✅ NOVO:
   'create-block': [payload: { type: BlockType; position?: { x: number; y: number } }];
 }>();
 
-const canvasMenuRef = ref<HTMLElement | null>(null);
-
-function handleDocumentClick(event: MouseEvent) {
-  if (!showCanvasNewBlockMenu.value) return;
-
-  const target = event.target as HTMLElement;
-
-  // Se clicou fora do menu e fora do botão
-  if (canvasMenuRef.value && !canvasMenuRef.value.contains(target)) {
-    showCanvasNewBlockMenu.value = false;
-  }
-}
-
-onMounted(() => {
-  document.addEventListener('click', handleDocumentClick);
-});
-
-onBeforeUnmount(() => {
-  document.removeEventListener('click', handleDocumentClick);
-});
-
+// Refs
 const canvasRef = ref<HTMLDivElement | null>(null);
+const renderKey = ref(0);
 
-// Estado do canvas
-const panOffset = ref({ x: 0, y: 0 });
-const isPanning = ref(false);
-const panStart = ref({ x: 0, y: 0 });
+// Callbacks para composables
+const updateBlocks = (blocks: Block[]) => emit('update:blocks', blocks);
+const updateConnections = (connections: Connection[]) => emit('update:connections', connections);
 
-const lastZoom = ref(props.zoom);
+// Setup dos composables
+const blocksRef = toRef(props, 'blocks');
+const connectionsRef = toRef(props, 'connections');
 
-// Quando o zoom veio do Ctrl+Wheel, guardamos a âncora (mouse)
-const wheelZoomAnchor = ref<{ x: number; y: number } | null>(null);
+const transform = useCanvasTransform({
+  canvasRef,
+  initialZoom: props.zoom
+});
 
-/**
- * Ajusta panOffset para que o ponto do "mundo" sob (anchorClientX/Y) fique fixo na tela,
- * mesmo mudando o zoom.
- */
-function keepPointUnderAnchor(oldZoomPct: number, newZoomPct: number, anchorClientX: number, anchorClientY: number) {
-  const rect = canvasRef.value?.getBoundingClientRect();
-  if (!rect) return;
+const geometry = useConnectionGeometry({
+  canvasRef,
+  panOffset: transform.panOffset,
+  zoom: transform.zoom
+});
 
-  const oldZoom = oldZoomPct / 100;
-  const newZoom = newZoomPct / 100;
+const connectionMgr = useConnectionManager({
+  blocks: blocksRef,
+  connections: connectionsRef,
+  onUpdateBlocks: updateBlocks,
+  onUpdateConnections: updateConnections
+});
 
-  // Posição da âncora em coordenadas do canvas (tela, relativa ao canvas)
-  const ax = anchorClientX - rect.left;
-  const ay = anchorClientY - rect.top;
+const waypointEditor = useWaypointEditor({
+  canvasRef,
+  panOffset: transform.panOffset,
+  zoom: transform.zoom,
+  connections: connectionsRef,
+  onUpdateConnections: updateConnections,
+  onSelectConnection: connectionMgr.selectConnection
+});
 
-  // Coordenadas do "mundo" (antes do zoom) que estavam sob a âncora
-  const worldX = (ax - panOffset.value.x) / oldZoom;
-  const worldY = (ay - panOffset.value.y) / oldZoom;
+const interactions = useCanvasInteractions({
+  canvasRef,
+  panOffset: transform.panOffset,
+  zoom: transform.zoom,
+  blocks: blocksRef,
+  onUpdateBlocks: updateBlocks
+});
 
-  // Atualiza panOffset para manter worldX/worldY sob a mesma âncora após o zoom
-  panOffset.value = {
-    x: ax - worldX * newZoom,
-    y: ay - worldY * newZoom
-  };
-}
-
-// ✅ CONTROLES DE ZOOM (BOTÕES + / -)
-function zoomIn() {
-  const next = Math.min(150, props.zoom + 10);
-  emit('update:zoom', next);
-}
-
-function zoomOut() {
-  const next = Math.max(25, props.zoom - 10);
-  emit('update:zoom', next);
-}
-
-// Estado do arraste de blocos
-const draggedBlock = ref<string | null>(null);
-const dragStart = ref({ x: 0, y: 0, blockX: 0, blockY: 0 });
-
-// Estado da criação de conexões
-const connectingFrom = ref<{ blockId: string; outputId?: string; element: HTMLElement } | null>(null);
-const mousePosition = ref({ x: 0, y: 0 });
-const tempConnectionPath = ref<string>('');
-
-// Estado da seleção de conexão
-const selectedConnectionId = ref<string | null>(null);
-
-// Estado do arraste de waypoints
-const draggingWaypoint = ref<{ connectionId: string; waypointIndex: number } | null>(null);
-const draggingSegment = ref<{ connectionId: string; segmentIndex: number; startPos: { x: number; y: number } } | null>(
-  null
-);
-
+// Estilo do canvas com transformações
 const canvasStyle = computed(() => ({
-  transform: `translate(${panOffset.value.x}px, ${panOffset.value.y}px) scale(${props.zoom / 100})`,
+  transform: `translate(${transform.panOffset.value.x}px, ${transform.panOffset.value.y}px) scale(${transform.zoom.value / 100})`,
   transformOrigin: '0 0',
-  '--pan-x': `${panOffset.value.x}px`,
-  '--pan-y': `${panOffset.value.y}px`,
-  '--zoom': `${props.zoom / 100}`
+  '--pan-x': `${transform.panOffset.value.x}px`,
+  '--pan-y': `${transform.panOffset.value.y}px`,
+  '--zoom': `${transform.zoom.value / 100}`
 }));
-
-// Função auxiliar para obter a posição de um handle
-function getHandlePosition(handleElement: HTMLElement): { x: number; y: number } {
-  const canvasBounds = canvasRef.value?.getBoundingClientRect();
-  const handleBounds = handleElement.getBoundingClientRect();
-
-  if (!canvasBounds) return { x: 0, y: 0 };
-
-  const zoom = props.zoom / 100;
-
-  return {
-    x: (handleBounds.left + handleBounds.width / 2 - canvasBounds.left - panOffset.value.x) / zoom,
-    y: (handleBounds.top + handleBounds.height / 2 - canvasBounds.top - panOffset.value.y) / zoom
-  };
-}
-
-// Gera o path SVG para uma conexão estilo Landbot (com curvas arredondadas de 90 graus)
-function getConnectionPath(fromX: number, fromY: number, toX: number, toY: number): string {
-  const dx = toX - fromX;
-  const dy = toY - fromY;
-  const radius = 15;
-  const verticalGap = 60; // Espaço acima/abaixo do bloco
-  const horizontalOffset = 50; // Distância para direita antes de virar
-
-  // Se a conexão vai para frente (toX > fromX), usa o caminho simples
-  if (dx > 0) {
-    // Se os blocos estão aproximadamente na mesma altura
-    if (Math.abs(dy) < 20) {
-      return `M ${fromX} ${fromY} L ${toX} ${toY}`;
-    }
-
-    // Indo para frente e para baixo/cima
-    const goingDown = dy > 0;
-    const firstCornerX = fromX + horizontalOffset;
-
-    if (goingDown) {
-      return `
-        M ${fromX} ${fromY}
-        L ${firstCornerX - radius} ${fromY}
-        Q ${firstCornerX} ${fromY}, ${firstCornerX} ${fromY + radius}
-        L ${firstCornerX} ${toY - radius}
-        Q ${firstCornerX} ${toY}, ${firstCornerX + radius} ${toY}
-        L ${toX} ${toY}
-      `.replace(/\s+/g, ' ').trim();
-    } else {
-      return `
-        M ${fromX} ${fromY}
-        L ${firstCornerX - radius} ${fromY}
-        Q ${firstCornerX} ${fromY}, ${firstCornerX} ${fromY - radius}
-        L ${firstCornerX} ${toY + radius}
-        Q ${firstCornerX} ${toY}, ${firstCornerX + radius} ${toY}
-        L ${toX} ${toY}
-      `.replace(/\s+/g, ' ').trim();
-    }
-  }
-
-  // Se a conexão vai para trás (toX <= fromX), usa o caminho em U
-  const rightX = fromX + horizontalOffset;
-  const leftX = toX - horizontalOffset;
-
-  // Se o destino está abaixo, passa por baixo; se está acima, passa por cima
-  const goingDown = dy > 0;
-  const edgeY = goingDown ? Math.max(fromY, toY) + verticalGap : Math.min(fromY, toY) - verticalGap;
-
-  if (goingDown) {
-    // Caminho por baixo: direita -> baixo -> esquerda -> sobe até destino
-    return `
-      M ${fromX} ${fromY}
-      L ${rightX - radius} ${fromY}
-      Q ${rightX} ${fromY}, ${rightX} ${fromY + radius}
-      L ${rightX} ${edgeY - radius}
-      Q ${rightX} ${edgeY}, ${rightX - radius} ${edgeY}
-      L ${leftX + radius} ${edgeY}
-      Q ${leftX} ${edgeY}, ${leftX} ${edgeY - radius}
-      L ${leftX} ${toY + radius}
-      Q ${leftX} ${toY}, ${leftX + radius} ${toY}
-      L ${toX} ${toY}
-    `.replace(/\s+/g, ' ').trim();
-  } else {
-    // Caminho por cima: direita -> cima -> esquerda -> desce até destino
-    return `
-      M ${fromX} ${fromY}
-      L ${rightX - radius} ${fromY}
-      Q ${rightX} ${fromY}, ${rightX} ${fromY - radius}
-      L ${rightX} ${edgeY + radius}
-      Q ${rightX} ${edgeY}, ${rightX - radius} ${edgeY}
-      L ${leftX + radius} ${edgeY}
-      Q ${leftX} ${edgeY}, ${leftX} ${edgeY + radius}
-      L ${leftX} ${toY - radius}
-      Q ${leftX} ${toY}, ${leftX + radius} ${toY}
-      L ${toX} ${toY}
-    `.replace(/\s+/g, ' ').trim();
-  }
-}
-
-// Atualiza o path da conexão temporária durante o arraste
-function updateTempConnection() {
-  if (!connectingFrom.value) {
-    tempConnectionPath.value = '';
-    return;
-  }
-
-  const fromPos = getHandlePosition(connectingFrom.value.element);
-  const path = getConnectionPath(fromPos.x, fromPos.y, mousePosition.value.x, mousePosition.value.y);
-  tempConnectionPath.value = path;
-}
 
 // Mouse down no canvas
 function handleCanvasMouseDown(event: MouseEvent) {
   // Cancela conexão em andamento
-  if (connectingFrom.value) {
-    connectingFrom.value = null;
-    tempConnectionPath.value = '';
+  if (connectionMgr.connectingFrom.value) {
+    connectionMgr.cancelConnection();
     return;
   }
 
   // Pan: botão do meio ou Espaço + botão esquerdo
   if (event.button === 1 || (event.button === 0 && event.shiftKey)) {
     event.preventDefault();
-    isPanning.value = true;
-    panStart.value = { x: event.clientX, y: event.clientY };
+    transform.startPan(event.clientX, event.clientY);
     return;
   }
 
   // Desseleciona ao clicar no canvas vazio
   if (event.target === canvasRef.value) {
     emit('update:selectedBlockId', null);
-    selectedConnectionId.value = null;
+    connectionMgr.deselectConnection();
   }
 }
 
-// Manipula o clique direito no canvas
+// Mouse move no canvas
+function handleCanvasMouseMove(event: MouseEvent) {
+  interactions.updateMousePosition(event);
+
+  // Atualiza conexão temporária
+  if (connectionMgr.connectingFrom.value) {
+    connectionMgr.updateTempConnection(
+      interactions.mousePosition.value.x,
+      interactions.mousePosition.value.y,
+      geometry.getHandlePosition
+    );
+  }
+
+  // Pan do canvas
+  if (transform.isPanning.value) {
+    transform.updatePan(event.clientX, event.clientY);
+  }
+
+  // Arrastar bloco
+  if (interactions.isDraggingBlock()) {
+    interactions.updateBlockDrag(event);
+  }
+
+  // Arrastar waypoint/segmento
+  if (waypointEditor.isDragging()) {
+    waypointEditor.updateDrag(event);
+  }
+}
+
+// Mouse up no canvas
+function handleCanvasMouseUp() {
+  transform.endPan();
+  interactions.endBlockDrag();
+  waypointEditor.endDrag();
+}
+
+// Context menu no canvas
 function handleCanvasContextMenu(event: MouseEvent) {
   event.preventDefault();
 
   const rect = canvasRef.value?.getBoundingClientRect();
   if (!rect) return;
 
-  const zoom = props.zoom / 100;
+  const zoom = transform.zoom.value / 100;
   const position = {
-    x: (event.clientX - rect.left - panOffset.value.x) / zoom,
-    y: (event.clientY - rect.top - panOffset.value.y) / zoom,
+    x: (event.clientX - rect.left - transform.panOffset.value.x) / zoom,
+    y: (event.clientY - rect.top - transform.panOffset.value.y) / zoom,
     screenX: event.clientX,
     screenY: event.clientY
   };
@@ -298,92 +167,27 @@ function handleCanvasContextMenu(event: MouseEvent) {
   emit('context-menu', position);
 }
 
-// Mouse move no canvas
-function handleCanvasMouseMove(event: MouseEvent) {
-  const rect = canvasRef.value?.getBoundingClientRect();
-  if (rect) {
-    const zoom = props.zoom / 100;
-    mousePosition.value = {
-      x: (event.clientX - rect.left - panOffset.value.x) / zoom,
-      y: (event.clientY - rect.top - panOffset.value.y) / zoom
-    };
-  }
-
-  // Atualiza conexão temporária
-  if (connectingFrom.value) {
-    updateTempConnection();
-  }
-
-  // Pan do canvas
-  if (isPanning.value) {
-    const dx = event.clientX - panStart.value.x;
-    const dy = event.clientY - panStart.value.y;
-    panOffset.value = {
-      x: panOffset.value.x + dx,
-      y: panOffset.value.y + dy
-    };
-    panStart.value = { x: event.clientX, y: event.clientY };
-  }
-
-  // Arrastar bloco
-  if (draggedBlock.value) {
-    const zoom = props.zoom / 100;
-    const dx = (event.clientX - dragStart.value.x) / zoom;
-    const dy = (event.clientY - dragStart.value.y) / zoom;
-
-    const updatedBlocks = props.blocks.map(b =>
-      b.id === draggedBlock.value
-        ? { ...b, position: { x: dragStart.value.blockX + dx, y: dragStart.value.blockY + dy } }
-        : b
-    );
-    emit('update:blocks', updatedBlocks);
-  }
-
-  // Arrastar segmento/waypoint
-  if (draggingSegment.value || draggingWaypoint.value) {
-    handleSegmentDrag(event);
-  }
-}
-
-// Mouse up no canvas
-function handleCanvasMouseUp() {
-  isPanning.value = false;
-  draggedBlock.value = null;
-  handleSegmentMouseUp();
-}
-
-// Início do arraste de um bloco
+// Handlers de blocos
 function handleBlockDragStart(blockId: string, event: MouseEvent) {
-  draggedBlock.value = blockId;
-  const block = props.blocks.find(b => b.id === blockId);
-  if (block) {
-    dragStart.value = {
-      x: event.clientX,
-      y: event.clientY,
-      blockX: block.position.x,
-      blockY: block.position.y
-    };
-  }
+  interactions.startBlockDrag(blockId, event);
 }
 
-// Seleção de um bloco
 function handleBlockSelect(blockId: string) {
-  if (!connectingFrom.value) {
+  if (!connectionMgr.connectingFrom.value) {
     emit('update:selectedBlockId', blockId);
-
-    // ✅ avisa o componente pai para abrir a aba "Bloco" e focar no editor
     emit('focus-block-editor');
   }
 }
 
-// Deletar um bloco
 function handleBlockDelete(blockId: string) {
   // Remove o bloco
   const updatedBlocks = props.blocks.filter(b => b.id !== blockId);
   emit('update:blocks', updatedBlocks);
 
   // Remove todas as conexões relacionadas ao bloco
-  const updatedConnections = props.connections.filter(c => c.fromBlockId !== blockId && c.toBlockId !== blockId);
+  const updatedConnections = props.connections.filter(
+    c => c.fromBlockId !== blockId && c.toBlockId !== blockId
+  );
   emit('update:connections', updatedConnections);
 
   // Limpa seleção se o bloco deletado estava selecionado
@@ -392,368 +196,6 @@ function handleBlockDelete(blockId: string) {
   }
 }
 
-// Início de uma conexão (mousedown no handle de saída)
-function handleConnectStart(blockId: string, outputId?: string) {
-  const handleId = outputId ? `${blockId}-output-${outputId}` : `${blockId}-output`;
-  const handleElement = document.querySelector(`[data-handle-id="${handleId}"]`) as HTMLElement;
-
-  if (!handleElement) {
-    console.error('Handle não encontrado:', handleId);
-    return;
-  }
-
-  connectingFrom.value = {
-    blockId,
-    outputId,
-    element: handleElement
-  };
-
-  updateTempConnection();
-}
-
-// Click no handle de entrada (finaliza a conexão)
-function handleInputClick(blockId: string) {
-  if (!connectingFrom.value || connectingFrom.value.blockId === blockId) {
-    connectingFrom.value = null;
-    tempConnectionPath.value = '';
-    return;
-  }
-
-  // Cria a conexão
-  createConnection(connectingFrom.value.blockId, connectingFrom.value.outputId, blockId);
-
-  connectingFrom.value = null;
-  tempConnectionPath.value = '';
-}
-
-// Cria uma nova conexão
-function createConnection(fromBlockId: string, fromOutputId: string | undefined, toBlockId: string) {
-  const fromBlock = props.blocks.find(b => b.id === fromBlockId);
-  const toBlock = props.blocks.find(b => b.id === toBlockId);
-
-  if (!fromBlock || !toBlock) return;
-
-  // NÃO permitir saída do bloco 'end'
-  if (fromBlock.type === 'end') {
-    console.warn('Não é possível criar conexão a partir de um bloco de fim');
-    return;
-  }
-
-  // NÃO permitir conexão duplicada idêntica
-  const isDuplicate = props.connections.some(
-    c => c.fromBlockId === fromBlockId && c.fromOutputId === fromOutputId && c.toBlockId === toBlockId
-  );
-
-  if (isDuplicate) {
-    console.warn('Conexão duplicada - já existe');
-    return;
-  }
-
-  // Atualiza o nextBlockId no bloco de origem
-  const updatedBlocks = props.blocks.map(block => {
-    if (block.id !== fromBlockId) return block;
-
-    // Se tem outputId, atualiza a escolha ou condição específica
-    if (fromOutputId && block.choices) {
-      return {
-        ...block,
-        choices: block.choices.map(c => (c.id === fromOutputId ? { ...c, nextBlockId: toBlockId } : c))
-      };
-    }
-
-    if (fromOutputId && block.conditions) {
-      return {
-        ...block,
-        conditions: block.conditions.map(c => (c.id === fromOutputId ? { ...c, nextBlockId: toBlockId } : c))
-      };
-    }
-
-    // Caso contrário, atualiza o nextBlockId principal
-    return { ...block, nextBlockId: toBlockId };
-  });
-
-  emit('update:blocks', updatedBlocks);
-
-  // Adiciona a conexão visual
-  const newConnection: Connection = {
-    id: `conn_${Date.now()}`,
-    fromBlockId,
-    fromOutputId,
-    toBlockId
-  };
-
-  // Remove APENAS conexão antiga com mesmo from/fromOutput (permite múltiplas entradas)
-  const filteredConnections = props.connections.filter(c => !(c.fromBlockId === fromBlockId && c.fromOutputId === fromOutputId));
-
-  emit('update:connections', [...filteredConnections, newConnection]);
-}
-
-// Cria um path suave com cantos arredondados entre pontos
-function getSmoothPath(points: { x: number; y: number }[], shortenEnd: number = 0): string {
-  if (points.length < 2) return '';
-
-  // Encurta o último ponto se necessário
-  const workingPoints = [...points];
-  if (shortenEnd > 0 && workingPoints.length >= 2) {
-    const lastIdx = workingPoints.length - 1;
-    const prevPoint = workingPoints[lastIdx - 1];
-    const lastPoint = workingPoints[lastIdx];
-
-    const dx = lastPoint.x - prevPoint.x;
-    const dy = lastPoint.y - prevPoint.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
-    if (distance > shortenEnd) {
-      workingPoints[lastIdx] = {
-        x: lastPoint.x - (dx / distance) * shortenEnd,
-        y: lastPoint.y - (dy / distance) * shortenEnd
-      };
-    }
-  }
-
-  if (workingPoints.length === 2) {
-    return `M ${workingPoints[0].x} ${workingPoints[0].y} L ${workingPoints[1].x} ${workingPoints[1].y}`;
-  }
-
-  const radius = 20; // Raio das curvas
-  let path = `M ${workingPoints[0].x} ${workingPoints[0].y}`;
-
-  for (let i = 0; i < workingPoints.length - 1; i++) {
-    const current = workingPoints[i];
-    const next = workingPoints[i + 1];
-    const isLast = i === workingPoints.length - 2;
-
-    const dx = next.x - current.x;
-    const dy = next.y - current.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
-    if (distance < radius * 2) {
-      // Se a distância for muito curta, faz linha reta
-      path += ` L ${next.x} ${next.y}`;
-    } else if (isLast) {
-      // Último segmento: arredonda apenas o início
-      const startRadius = Math.min(radius, distance / 2);
-      const ratio = startRadius / distance;
-      const cornerX = current.x + dx * ratio;
-      const cornerY = current.y + dy * ratio;
-
-      path += ` L ${cornerX} ${cornerY}`;
-      path += ` L ${next.x} ${next.y}`;
-    } else {
-      // Segmentos intermediários: arredonda o final
-      const nextNext = workingPoints[i + 2];
-      const endRadius = Math.min(radius, distance / 2);
-      const ratio = 1 - endRadius / distance;
-      const cornerX = current.x + dx * ratio;
-      const cornerY = current.y + dy * ratio;
-
-      path += ` L ${cornerX} ${cornerY}`;
-
-      // Calcula o ponto de controle para a curva
-      const nextDx = nextNext.x - next.x;
-      const nextDy = nextNext.y - next.y;
-      const nextDistance = Math.sqrt(nextDx * nextDx + nextDy * nextDy);
-      const nextRatio = Math.min(radius, nextDistance / 2) / nextDistance;
-      const nextCornerX = next.x + nextDx * nextRatio;
-      const nextCornerY = next.y + nextDy * nextRatio;
-
-      // Curva quadrática suave
-      path += ` Q ${next.x} ${next.y}, ${nextCornerX} ${nextCornerY}`;
-    }
-  }
-
-  return path;
-}
-
-// Calcula o path de uma conexão baseado nos IDs dos handles
-function getConnectionPathById(conn: Connection): string {
-  const fromHandleId = conn.fromOutputId ? `${conn.fromBlockId}-output-${conn.fromOutputId}` : `${conn.fromBlockId}-output`;
-  const toHandleId = `${conn.toBlockId}-input`;
-
-  const fromHandle = document.querySelector(`[data-handle-id='${fromHandleId}']`) as HTMLElement;
-  const toHandle = document.querySelector(`[data-handle-id='${toHandleId}']`) as HTMLElement;
-
-  if (!fromHandle || !toHandle) return '';
-
-  const fromPos = getHandlePosition(fromHandle);
-  const toPos = getHandlePosition(toHandle);
-
-  // Encurta o path para parar antes do handle de destino (deixa espaço para clicar)
-  const shortenDistance = 8; // pixels antes do handle
-  const shortenedToPos = {
-    x: toPos.x - shortenDistance,
-    y: toPos.y
-  };
-
-  // Se tiver waypoints, cria um path suave que passa por eles
-  if (conn.waypoints && conn.waypoints.length > 0) {
-    const points = [fromPos, ...conn.waypoints, shortenedToPos];
-    return getSmoothPath(points, 0); // Já encurtamos acima
-  }
-
-  return getConnectionPath(fromPos.x, fromPos.y, shortenedToPos.x, shortenedToPos.y);
-}
-
-// Obtém os pontos de uma conexão (início, waypoints, fim)
-function getConnectionPoints(conn: Connection): { x: number; y: number }[] {
-  const fromHandleId = conn.fromOutputId ? `${conn.fromBlockId}-output-${conn.fromOutputId}` : `${conn.fromBlockId}-output`;
-  const toHandleId = `${conn.toBlockId}-input`;
-
-  const fromHandle = document.querySelector(`[data-handle-id='${fromHandleId}']`) as HTMLElement;
-  const toHandle = document.querySelector(`[data-handle-id='${toHandleId}']`) as HTMLElement;
-
-  if (!fromHandle || !toHandle) return [];
-
-  const fromPos = getHandlePosition(fromHandle);
-  const toPos = getHandlePosition(toHandle);
-
-  const points = [fromPos];
-  if (conn.waypoints) {
-    points.push(...conn.waypoints);
-  }
-  points.push(toPos);
-
-  return points;
-}
-
-// Seleciona uma conexão
-function handleConnectionClick(connectionId: string, event: MouseEvent) {
-  event.stopPropagation();
-  event.preventDefault();
-  selectedConnectionId.value = connectionId;
-  console.log('Connection clicked:', connectionId);
-}
-
-// Inicia o arraste de um segmento para criar/mover waypoint
-function handleSegmentMouseDown(connectionId: string, segmentIndex: number, event: MouseEvent) {
-  event.stopPropagation();
-  event.preventDefault();
-
-  const canvasBounds = canvasRef.value?.getBoundingClientRect();
-  if (!canvasBounds) return;
-
-  const zoom = props.zoom / 100;
-  const startPos = {
-    x: (event.clientX - canvasBounds.left - panOffset.value.x) / zoom,
-    y: (event.clientY - canvasBounds.top - panOffset.value.y) / zoom
-  };
-
-  draggingSegment.value = { connectionId, segmentIndex, startPos };
-  selectedConnectionId.value = connectionId;
-}
-
-// Inicia o arraste de um waypoint existente
-function handleWaypointMouseDown(connectionId: string, waypointIndex: number, event: MouseEvent) {
-  event.stopPropagation();
-  event.preventDefault();
-  draggingWaypoint.value = { connectionId, waypointIndex };
-}
-
-// Atualiza a posição durante o arraste
-function handleSegmentDrag(event: MouseEvent) {
-  if (!draggingSegment.value && !draggingWaypoint.value) return;
-
-  const canvasBounds = canvasRef.value?.getBoundingClientRect();
-  if (!canvasBounds) return;
-
-  const zoom = props.zoom / 100;
-  const currentPos = {
-    x: (event.clientX - canvasBounds.left - panOffset.value.x) / zoom,
-    y: (event.clientY - canvasBounds.top - panOffset.value.y) / zoom
-  };
-
-  if (draggingSegment.value) {
-    // Criando um novo waypoint arrastando o segmento
-    const { connectionId, segmentIndex } = draggingSegment.value;
-    const connection = props.connections.find(c => c.id === connectionId);
-    if (!connection) return;
-
-    const updatedConnections = props.connections.map(c => {
-      if (c.id !== connectionId) return c;
-
-      const waypoints = c.waypoints ? [...c.waypoints] : [];
-      waypoints.splice(segmentIndex, 0, currentPos);
-
-      return { ...c, waypoints };
-    });
-
-    emit('update:connections', updatedConnections);
-
-    // Muda para modo de arraste de waypoint
-    draggingWaypoint.value = { connectionId, waypointIndex: segmentIndex };
-    draggingSegment.value = null;
-  } else if (draggingWaypoint.value) {
-    // Movendo um waypoint existente
-    const { connectionId, waypointIndex } = draggingWaypoint.value;
-
-    const updatedConnections = props.connections.map(c => {
-      if (c.id !== connectionId) return c;
-
-      const waypoints = c.waypoints ? [...c.waypoints] : [];
-      waypoints[waypointIndex] = currentPos;
-
-      return { ...c, waypoints };
-    });
-
-    emit('update:connections', updatedConnections);
-  }
-}
-
-// Finaliza o arraste
-function handleSegmentMouseUp() {
-  draggingSegment.value = null;
-  draggingWaypoint.value = null;
-}
-
-// Deleta a conexão selecionada
-function deleteSelectedConnection() {
-  if (!selectedConnectionId.value) return;
-
-  const connection = props.connections.find(c => c.id === selectedConnectionId.value);
-  if (!connection) return;
-
-  // Remove a conexão da lista
-  const updatedConnections = props.connections.filter(c => c.id !== selectedConnectionId.value);
-  emit('update:connections', updatedConnections);
-
-  // Atualiza o nextBlockId no bloco de origem
-  const updatedBlocks = props.blocks.map(block => {
-    if (block.id !== connection.fromBlockId) return block;
-
-    // Se tem outputId, remove o nextBlockId da escolha ou condição específica
-    if (connection.fromOutputId && block.choices) {
-      return {
-        ...block,
-        choices: block.choices.map(c => (c.id === connection.fromOutputId ? { ...c, nextBlockId: undefined } : c))
-      };
-    }
-
-    if (connection.fromOutputId && block.conditions) {
-      return {
-        ...block,
-        conditions: block.conditions.map(c => (c.id === connection.fromOutputId ? { ...c, nextBlockId: undefined } : c))
-      };
-    }
-
-    // Caso contrário, remove o nextBlockId principal
-    return { ...block, nextBlockId: undefined };
-  });
-
-  emit('update:blocks', updatedBlocks);
-  selectedConnectionId.value = null;
-}
-
-// Listener para teclas Delete/Backspace
-function handleKeyDown(event: KeyboardEvent) {
-  if (event.key === 'Delete' || event.key === 'Backspace') {
-    if (selectedConnectionId.value) {
-      event.preventDefault();
-      deleteSelectedConnection();
-    }
-  }
-}
-
-// Handler para context menu em blocos
 function handleBlockContextMenu(blockId: string, event: MouseEvent) {
   const canvasRect = canvasRef.value?.getBoundingClientRect();
   if (!canvasRect) return;
@@ -768,66 +210,79 @@ function handleBlockContextMenu(blockId: string, event: MouseEvent) {
   emit('block-context-menu', blockId, position);
 }
 
-// Força re-render quando blocos ou conexões mudam
-const renderKey = ref(0);
+// Handlers de conexões
+function handleConnectStart(blockId: string, outputId?: string) {
+  connectionMgr.startConnection(blockId, outputId);
+}
 
+function handleInputClick(blockId: string) {
+  connectionMgr.finishConnection(blockId);
+}
+
+function handleConnectionClick(connectionId: string) {
+  connectionMgr.selectConnection(connectionId);
+}
+
+// Handlers de waypoints
+function handleSegmentMouseDown(connectionId: string, segmentIndex: number, event: MouseEvent) {
+  waypointEditor.startDragSegment(connectionId, segmentIndex, event);
+}
+
+function handleWaypointMouseDown(connectionId: string, waypointIndex: number, event: MouseEvent) {
+  waypointEditor.startDragWaypoint(connectionId, waypointIndex, event);
+}
+
+// Toolbar handlers
+function handleCreateBlock(type: BlockType) {
+  const pos = transform.getCanvasCenterWorldPosition();
+  emit('create-block', { type, position: pos });
+}
+
+function handleZoomIn() {
+  transform.zoomIn();
+  emit('update:zoom', transform.zoom.value);
+}
+
+function handleZoomOut() {
+  transform.zoomOut();
+  emit('update:zoom', transform.zoom.value);
+}
+
+// Keyboard handler
+function handleKeyDown(event: KeyboardEvent) {
+  if (event.key === 'Delete' || event.key === 'Backspace') {
+    if (connectionMgr.selectedConnectionId.value) {
+      event.preventDefault();
+      connectionMgr.deleteSelectedConnection();
+    }
+  }
+}
+
+// Força re-render quando blocos ou conexões mudam
 function forceUpdate() {
   nextTick(() => {
     renderKey.value++;
   });
 }
 
-watch(() => [props.blocks, props.connections, props.zoom, panOffset.value], forceUpdate, { deep: true });
+// Watch para mudanças que requerem re-render
+watch(() => [props.blocks, props.connections, transform.zoom.value, transform.panOffset.value], forceUpdate, { deep: true });
 
-watch(
-  () => props.zoom,
-  (newZoom, oldZoom) => {
-    // Se o zoom foi acionado pelo Ctrl+Wheel: ancora no mouse
-    if (wheelZoomAnchor.value) {
-      keepPointUnderAnchor(oldZoom, newZoom, wheelZoomAnchor.value.x, wheelZoomAnchor.value.y);
-      wheelZoomAnchor.value = null;
-      lastZoom.value = newZoom;
-      return;
-    }
-
-    // Caso contrário (slider/toolbar/etc): ancora no centro do canvas
-    const rect = canvasRef.value?.getBoundingClientRect();
-    if (!rect) return;
-
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-
-    keepPointUnderAnchor(oldZoom, newZoom, centerX, centerY);
-    lastZoom.value = newZoom;
+// Watch para sincronizar zoom externo
+watch(() => props.zoom, (newZoom) => {
+  if (newZoom !== transform.zoom.value) {
+    transform.setZoom(newZoom);
   }
-);
+});
 
-// Handler para zoom com Ctrl + Wheel
-function handleWheel(event: WheelEvent) {
-  // se você quiser manter o pan com shift e evitar conflito, pode deixar assim:
-  if (isPanning.value) return;
-
-  event.preventDefault();
-
-  // deltaY > 0 geralmente = scroll pra baixo (zoom out)
-  const delta = -event.deltaY * 0.1;
-
-  const newZoom = Math.max(25, Math.min(150, props.zoom + delta));
-
-  // ancora no mouse (mesmo comportamento que você queria)
-  wheelZoomAnchor.value = { x: event.clientX, y: event.clientY };
-
-  emit('update:zoom', newZoom);
-}
-
+// Lifecycle
 onMounted(() => {
   forceUpdate();
   window.addEventListener('keydown', handleKeyDown);
 
-  // Adiciona listener para zoom com Ctrl + Wheel
   const canvas = canvasRef.value;
   if (canvas) {
-    canvas.addEventListener('wheel', handleWheel, { passive: false });
+    canvas.addEventListener('wheel', transform.handleWheel, { passive: false });
   }
 });
 
@@ -836,7 +291,7 @@ onBeforeUnmount(() => {
 
   const canvas = canvasRef.value;
   if (canvas) {
-    canvas.removeEventListener('wheel', handleWheel as any);
+    canvas.removeEventListener('wheel', transform.handleWheel as any);
   }
 });
 </script>
@@ -845,148 +300,33 @@ onBeforeUnmount(() => {
   <div
     ref="canvasRef"
     class="canvas"
-    :class="{ panning: isPanning }"
+    :class="{ panning: transform.isPanning.value }"
     @mousedown="handleCanvasMouseDown"
     @mousemove="handleCanvasMouseMove"
     @mouseup="handleCanvasMouseUp"
     @mouseleave="handleCanvasMouseUp"
     @contextmenu="handleCanvasContextMenu"
   >
-    <!-- ✅ Botão + Novo Bloco dentro do Canvas -->
-    <div class="canvas-toolbar" @click.stop>
-      <button class="btn-newblock" @click="showCanvasNewBlockMenu = !showCanvasNewBlockMenu">
-        ➕ Novo Bloco
-      </button>
+    <!-- Toolbar com menu e controles de zoom -->
+    <CanvasToolbar
+      @create-block="handleCreateBlock"
+      @zoom-in="handleZoomIn"
+      @zoom-out="handleZoomOut"
+    />
 
-      <div v-if="showCanvasNewBlockMenu" class="canvas-block-menu" ref="canvasMenuRef">
-        <button @click="requestCreateBlock('message')" class="canvas-block-menu-item">
-          <span class="menu-icon" style="background:#3b82f6;">💬</span>
-          <span class="menu-label">Mensagem</span>
-        </button>
-
-        <button @click="requestCreateBlock('openQuestion')" class="canvas-block-menu-item">
-          <span class="menu-icon" style="background:#b45309;">❓</span>
-          <span class="menu-label">Pergunta Aberta</span>
-        </button>
-
-        <button @click="requestCreateBlock('choiceQuestion')" class="canvas-block-menu-item">
-          <span class="menu-icon" style="background:#f59e0b;">📊</span>
-          <span class="menu-label">Múltipla Escolha</span>
-        </button>
-
-        <button @click="requestCreateBlock('condition')" class="canvas-block-menu-item">
-          <span class="menu-icon" style="background:#8b5cf6;">⚙️</span>
-          <span class="menu-label">Condicional</span>
-        </button>
-
-        <button @click="requestCreateBlock('setVariable')" class="canvas-block-menu-item">
-          <span class="menu-icon" style="background:#06b6d4;">📝</span>
-          <span class="menu-label">Definir Variável</span>
-        </button>
-
-        <button @click="requestCreateBlock('math')" class="canvas-block-menu-item">
-          <span class="menu-icon" style="background:#f97316;">🔢</span>
-          <span class="menu-label">Operação Matemática</span>
-        </button>
-
-        <button @click="requestCreateBlock('image')" class="canvas-block-menu-item">
-          <span class="menu-icon" style="background:#ec4899;">🖼️</span>
-          <span class="menu-label">Imagem</span>
-        </button>
-
-        <button @click="requestCreateBlock('end')" class="canvas-block-menu-item">
-          <span class="menu-icon" style="background:#ef4444;">✅</span>
-          <span class="menu-label">Fim</span>
-        </button>
-      </div>
-    </div>
-
-    <!-- ✅ CONTROLES DE ZOOM NO CANTO DIREITO INFERIOR -->
-    <div class="canvas-zoom-controls" @click.stop>
-      <button class="zoom-btn" @click="zoomIn">+</button>
-      <button class="zoom-btn" @click="zoomOut">−</button>
-    </div>
-
-    <!-- SVG para desenhar as conexões -->
-    <svg ref="svgRef" class="connections-svg" :style="canvasStyle">
-      <defs>
-        <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
-          <polygon points="0 0, 10 3, 0 6" fill="#64748b" />
-        </marker>
-        <marker id="arrowhead-temp" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
-          <polygon points="0 0, 10 3, 0 6" fill="#10b981" />
-        </marker>
-      </defs>
-
-      <!-- Conexões existentes -->
-      <g v-for="conn in connections" :key="`${conn.id}-${renderKey}`">
-        <!-- Hitbox invisível para facilitar clique -->
-        <path
-          :d="getConnectionPathById(conn)"
-          stroke="transparent"
-          stroke-width="12"
-          fill="none"
-          class="connection-hitbox"
-          @click="handleConnectionClick(conn.id, $event)"
-        />
-
-        <!-- Path visível -->
-        <path
-          :d="getConnectionPathById(conn)"
-          :stroke="selectedConnectionId === conn.id ? '#3b82f6' : '#64748b'"
-          :stroke-width="selectedConnectionId === conn.id ? 3.5 : 2.5"
-          fill="none"
-          marker-end="url(#arrowhead)"
-          class="connection-path"
-          @click="handleConnectionClick(conn.id, $event)"
-        />
-
-        <!-- Segmentos arrastáveis (apenas quando selecionado) -->
-        <template v-if="selectedConnectionId === conn.id">
-          <line
-            v-for="(point, index) in getConnectionPoints(conn).slice(0, -1)"
-            :key="`segment-${index}`"
-            :x1="point.x"
-            :y1="point.y"
-            :x2="getConnectionPoints(conn)[index + 1].x"
-            :y2="getConnectionPoints(conn)[index + 1].y"
-            stroke="rgba(59, 130, 246, 0.2)"
-            stroke-width="12"
-            class="connection-segment"
-            @mousedown="handleSegmentMouseDown(conn.id, index, $event)"
-          />
-        </template>
-
-        <!-- Waypoints editáveis (apenas quando selecionado) -->
-        <template v-if="selectedConnectionId === conn.id">
-          <circle
-            v-for="(waypoint, index) in conn.waypoints"
-            :key="`waypoint-${index}`"
-            :cx="waypoint.x"
-            :cy="waypoint.y"
-            r="8"
-            fill="#3b82f6"
-            stroke="#ffffff"
-            stroke-width="2"
-            class="connection-waypoint"
-            @mousedown="handleWaypointMouseDown(conn.id, index, $event)"
-            @click.stop
-          />
-        </template>
-      </g>
-
-      <!-- Conexão temporária durante o arraste -->
-      <path
-        v-if="tempConnectionPath"
-        :d="tempConnectionPath"
-        stroke="#10b981"
-        stroke-width="2.5"
-        stroke-dasharray="8 4"
-        fill="none"
-        marker-end="url(#arrowhead-temp)"
-        class="connection-temp"
-      />
-    </svg>
+    <!-- Camada de conexões SVG -->
+    <ConnectionsLayer
+      :connections="connections"
+      :selectedConnectionId="connectionMgr.selectedConnectionId.value"
+      :tempConnectionPath="connectionMgr.tempConnectionPath.value"
+      :renderKey="renderKey"
+      :canvasStyle="canvasStyle"
+      :getConnectionPathById="geometry.getConnectionPathById"
+      :getConnectionPoints="geometry.getConnectionPoints"
+      @connection-click="handleConnectionClick"
+      @segment-mousedown="handleSegmentMouseDown"
+      @waypoint-mousedown="handleWaypointMouseDown"
+    />
 
     <!-- Container dos blocos -->
     <div class="blocks-container" :style="canvasStyle">
@@ -995,7 +335,7 @@ onBeforeUnmount(() => {
         :key="block.id"
         :block="block"
         :is-selected="block.id === selectedBlockId"
-        :scale="zoom / 100"
+        :scale="transform.zoom.value / 100"
         @select="handleBlockSelect(block.id)"
         @input-click="handleInputClick(block.id)"
         @drag-start="(e) => handleBlockDragStart(block.id, e)"
@@ -1006,13 +346,13 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- Dica quando está conectando -->
-    <div v-if="connectingFrom" class="connection-hint">
+    <div v-if="connectionMgr.connectingFrom.value" class="connection-hint">
       <strong>🔗 Conectando...</strong><br />
       Clique no handle vermelho (entrada) do bloco de destino
     </div>
 
     <!-- Dica quando uma conexão está selecionada -->
-    <div v-if="selectedConnectionId" class="delete-hint">
+    <div v-if="connectionMgr.selectedConnectionId.value" class="delete-hint">
       Pressione <kbd>Delete</kbd> ou <kbd>Backspace</kbd> para remover esta conexão
     </div>
   </div>
@@ -1026,110 +366,6 @@ onBeforeUnmount(() => {
   overflow: hidden;
   background-color: #ffffff;
   cursor: default;
-}
-
-.canvas-toolbar {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 1200;
-  pointer-events: auto;
-}
-
-.btn-newblock {
-  padding: 8px 12px;
-  background: #3b82f6;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 6px 16px rgba(0,0,0,0.12);
-}
-
-.btn-newblock:hover {
-  background: #2563eb;
-}
-
-.canvas-block-menu {
-  margin-top: 8px;
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.12);
-  padding: 8px;
-
-  /* ✅ controla a largura do menu */
-  width: 200px;
-  max-width: 240px;
-}
-
-.canvas-block-menu-item {
-  width: 100%;
-  padding: 10px 12px;
-  background: white;
-  border: none;
-  border-radius: 8px;
-  text-align: left;
-  cursor: pointer;
-
-  font-size: 13px;
-  font-weight: 600;
-  color: #111827;
-
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.menu-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  font-size: 14px;
-  flex-shrink: 0;
-}
-
-.menu-label {
-  line-height: 1;
-}
-
-.canvas-block-menu-item:hover {
-  background: #f3f4f6;
-}
-
-/* ✅ ZOOM CONTROLS */
-.canvas-zoom-controls {
-  position: absolute;
-  right: 14px;
-  bottom: 14px;
-  z-index: 1200;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  pointer-events: auto;
-}
-
-.zoom-btn {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  border: 1px solid #e5e7eb;
-  background: white;
-  cursor: pointer;
-  font-size: 18px;
-  font-weight: 800;
-  color: #111827;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.12);
-  line-height: 1;
-}
-
-.zoom-btn:hover {
-  background: #f3f4f6;
 }
 
 .canvas::before {
@@ -1152,17 +388,6 @@ onBeforeUnmount(() => {
   cursor: grabbing !important;
 }
 
-.connections-svg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-  z-index: 150;
-  pointer-events: none;
-}
-
 .blocks-container {
   position: absolute;
   top: 0;
@@ -1175,62 +400,6 @@ onBeforeUnmount(() => {
 
 .blocks-container > * {
   pointer-events: auto;
-}
-
-.connection-hitbox {
-  cursor: pointer;
-  pointer-events: stroke;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.connections-svg g {
-  pointer-events: all;
-}
-
-.connection-path {
-  transition: stroke 0.2s, stroke-width 0.2s, filter 0.2s;
-  cursor: pointer;
-  pointer-events: none;
-  stroke-linecap: round;
-  filter: drop-shadow(0 0 0 transparent);
-}
-
-g:hover .connection-path {
-  stroke: #3b82f6 !important;
-  stroke-width: 4 !important;
-  filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.5));
-}
-
-.connection-temp {
-  pointer-events: none;
-  animation: dash 0.5s linear infinite;
-}
-
-.connection-segment {
-  cursor: grab;
-  pointer-events: stroke;
-}
-
-.connection-segment:active {
-  cursor: grabbing;
-}
-
-.connection-waypoint {
-  cursor: move;
-  pointer-events: all;
-  transition: r 0.2s, fill 0.2s, stroke 0.2s;
-}
-
-.connection-waypoint:hover {
-  r: 10;
-  filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.5));
-}
-
-@keyframes dash {
-  to {
-    stroke-dashoffset: -16;
-  }
 }
 
 .connection-hint {
