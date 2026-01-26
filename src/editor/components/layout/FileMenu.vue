@@ -69,10 +69,10 @@
         <div class="menu-group">
           <div class="menu-label">Local (PC)</div>
           <div class="menu-item" @click="handleMenuClick(openFromComputer)">
-            <span class="icon">📥</span> Importar JSON
+            <span class="icon">📥</span> Importar Projeto
           </div>
           <div class="menu-item" @click="handleMenuClick(saveToComputer)">
-            <span class="icon">📤</span> Exportar JSON
+            <span class="icon">📤</span> Exportar Projeto
           </div>
         </div>
 
