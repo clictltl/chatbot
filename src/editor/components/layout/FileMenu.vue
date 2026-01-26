@@ -1,75 +1,105 @@
 <template>
-  <div class="filemenu">
+  <div class="filemenu-container" ref="fileMenuContainer">
 
-    <!-- Botão Arquivo -->
-    <div class="menu-button" @click="toggleMenu">
-      Arquivo ▼
-    </div>
-
-    <!-- Nome do projeto atual -->
-    <div class="project-name" v-if="currentProjectId">
-      📄 {{ currentProjectName }}
-    </div>
-
-    <!-- Dropdown -->
-    <div v-if="open" class="dropdown" :class="{ 'align-right': !isWordPress }">
-      <div class="item" @click="handleMenuClick(newProject)">Novo projeto</div>
+    <!-- Grupo: Botão + Nome do Projeto -->
+    <div class="trigger-group">
       
-      <!-- Ações disponíveis no worpress quando logado -->
-      <template v-if="showWordPressItems">
-        <div class="separator"></div>
-        <div class="item" @click="handleMenuClick(saveProject)">Salvar</div>
-        <div class="item" @click="handleMenuClick(openSaveAs)">Salvar como...</div>
-        <div class="item" @click="handleMenuClick(openList)">Abrir...</div>
-        <div class="item" @click="handleMenuClick(openDeleteModal)">Excluir...</div>
-        <div class="item" @click="handleMenuClick(openShare)">Compartilhar...</div>
-        <div class="item" @click="handleMenuClick(openPublish)">Publicar...</div>
-      </template>
+      <!-- Botão Gatilho -->
+      <button class="menu-trigger" :class="{ 'active': open }" @click="toggleMenu">
+        <span class="label">Arquivo</span>
+        <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
 
-      <div class="separator"></div>
-
-      <!-- Ações locais (computador) -->
-      <div class="item" @click="handleMenuClick(openFromComputer)">Abrir do computador</div>
-      <div class="item" @click="handleMenuClick(saveToComputer)">Salvar no computador</div>
-    </div>
-
-    <!-- Modal: Salvar como -->
-    <div v-if="showSaveAs" class="placeholder-modal">
-      <div class="box">
-        <h3>Salvar como...</h3>
-        <input v-model="saveAsName" placeholder="Nome do novo projeto" />
-        <button @click="confirmSaveAs">Confirmar</button>
-        <button @click="showSaveAs = false">Cancelar</button>
-
-        <p v-if="error" class="error-msg">
-          Erro: {{ error }}
-        </p>
+      <!-- Nome do Projeto -->
+      <div v-if="currentProjectId" class="project-info">
+        <div class="separator-vertical"></div>
+        <span class="icon">📄</span>
+        <span class="name" :title="currentProjectName">{{ currentProjectName }}</span>
       </div>
+
     </div>
 
+    <!-- Dropdown Menu -->
+    <transition name="fade-slide">
+      <div v-if="open" class="dropdown-menu" :class="{ 'align-right': !isWordPress }">
+        
+        <!-- Grupo: Novo -->
+        <div class="menu-group">
+          <div class="menu-item" @click="handleMenuClick(newProject)">
+            <span class="icon">✨</span> Novo projeto
+          </div>
+        </div>
+        
+        <div class="divider" v-if="showWordPressItems"></div>
+
+        <!-- Grupo: WordPress -->
+        <div class="menu-group" v-if="showWordPressItems">
+          <div class="menu-label">Nuvem</div>
+          <div class="menu-item" @click="handleMenuClick(saveProject)">
+            <span class="icon">💾</span> Salvar
+          </div>
+          <div class="menu-item" @click="handleMenuClick(openSaveAs)">
+            <span class="icon">🔖</span> Salvar como...
+          </div>
+          <div class="menu-item" @click="handleMenuClick(openList)">
+            <span class="icon">📂</span> Abrir...
+          </div>
+          <div class="menu-item danger" @click="handleMenuClick(openDeleteModal)">
+            <span class="icon">🗑️</span> Excluir...
+          </div>
+        </div>
+        
+        <div class="divider" v-if="showWordPressItems"></div>
+
+        <!-- Grupo: Publicação -->
+         <div class="menu-group" v-if="showWordPressItems">
+          <div class="menu-item" @click="handleMenuClick(openShare)">
+            <span class="icon">🔗</span> Compartilhar...
+          </div>
+          <div class="menu-item highlight" @click="handleMenuClick(openPublish)">
+            <span class="icon">🚀</span> Publicar
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Grupo: Local -->
+        <div class="menu-group">
+          <div class="menu-label">Local (PC)</div>
+          <div class="menu-item" @click="handleMenuClick(openFromComputer)">
+            <span class="icon">📥</span> Importar JSON
+          </div>
+          <div class="menu-item" @click="handleMenuClick(saveToComputer)">
+            <span class="icon">📤</span> Exportar JSON
+          </div>
+        </div>
+
+      </div>
+    </transition>
+
+    <!-- Modais -->
+    <SaveAsModal v-if="showSaveAs" :mode="saveAsMode" @close="showSaveAs = false" @success="handleSaveAsSuccess"/>
     <OpenProjectModal v-if="showOpen" @close="showOpen = false" />
-
     <DeleteProjectModal v-if="showDelete" @close="showDelete = false" @deleted="handleDeleted"/>
-
     <ShareModal v-if="showShare" @close="showShare = false"/>
-
-    <ConfirmSaveBeforePublishModal
-      v-if="showConfirmSaveBeforePublish"
-      @close="showConfirmSaveBeforePublish = false"
-      @confirm="confirmSaveAndPublish"
-    />
-
+    <ConfirmSaveBeforePublishModal v-if="showConfirmSaveBeforePublish" @close="showConfirmSaveBeforePublish = false" @confirm="confirmSaveAndPublish"/>
     <PublishModal v-if="showPublish" @close="showPublish = false"/>
 
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, toRefs, computed } from 'vue';
+import { ref, toRefs, computed, onMounted, onUnmounted } from 'vue';
 import { useProjects } from '@/editor/utils/useProjects';
 import { resetProjectData } from '@/editor/utils/projectData';
 import { useAuth } from '@/editor/auth';
 import { importFromComputer, exportToComputer } from '@/editor/utils/localProjectIO';
+import { useToast } from '@/editor/utils/useToast';
+
+// Imports dos Modais
+import SaveAsModal from '@/editor/components/modals/SaveAsModal.vue';
 import OpenProjectModal from '@/editor/components/modals/OpenProjectModal.vue';
 import DeleteProjectModal from '@/editor/components/modals/DeleteProjectModal.vue';
 import ShareModal from '@/editor/components/modals/ShareModal.vue';
@@ -78,17 +108,22 @@ import ConfirmSaveBeforePublishModal from '@/editor/components/modals/ConfirmSav
 
 
 const projects = useProjects();
-const { currentProjectId, currentProjectName, error } = toRefs(projects);
+const { currentProjectId, currentProjectName } = toRefs(projects);
 const auth = useAuth();
+const toast = useToast();
 
 const open = ref(false);
 const showSaveAs = ref(false);
+const saveAsMode = ref<'create' | 'copy'>('create');
 const showOpen = ref(false);
 const showDelete = ref(false);
-const saveAsName = ref("");
 const showShare = ref(false);
 const showPublish = ref(false);
 const showConfirmSaveBeforePublish = ref(false);
+const pendingPublish = ref(false);
+
+// Referência ao container principal para detectar cliques fora
+const fileMenuContainer = ref<HTMLElement | null>(null);
 
 // Detecta WordPress
 const isWordPress =
@@ -111,6 +146,22 @@ function handleMenuClick(action: Function) {
   action();
 }
 
+// Lógica de fechar ao clicar fora
+const handleClickOutside = (event: MouseEvent) => {
+  // Se o menu estiver aberto E o clique for fora do container
+  if (
+    open.value &&
+    fileMenuContainer.value &&
+    !fileMenuContainer.value.contains(event.target as Node)
+  ) {
+    open.value = false;
+  }
+};
+
+// Lifecycle Hooks para adicionar/remover o listener global
+onMounted(() => { document.addEventListener('click', handleClickOutside); });
+onUnmounted(() => { document.removeEventListener('click', handleClickOutside); });
+
 // Novo
 function newProject() {
   resetProjectData();
@@ -124,28 +175,41 @@ function newProject() {
 async function saveProject() {
   // Se é um novo projeto, forçar "Salvar como..."
   if (!projects.currentProjectId.value) {
+    saveAsMode.value = 'create';
     showSaveAs.value = true;
     return;
   }
 
   // Senão salva normalmente
-  await projects.saveProject();
+  try {
+    const success = await projects.saveProject();
+
+    if (success) {
+      toast.success('Projeto salvo com sucesso!');
+    } else {
+      // Se projects.saveProject retornar false, provavelmente definiu projects.error
+      toast.error(projects.error.value || 'Erro ao salvar projeto.');
+    }
+  } catch (err) {
+    console.error(err);
+    toast.error('Ocorreu um erro inesperado.');
+  }
 }
 
 // Salvar como...
-async function confirmSaveAs() {
-  const result = await projects.saveProjectAs(saveAsName.value);
-
-  if (result) {
-    // deu certo
-    showSaveAs.value = false;
-    saveAsName.value = "";
-  }
-  // se der erro o modal fica aberto e o usuário vê a mensagem
+function openSaveAs() {
+  saveAsMode.value = 'copy';
+  showSaveAs.value = true;
 }
 
-function openSaveAs() {
-  showSaveAs.value = true;
+// Sucesso do modal Salvar Como (Lógica de salvamento movida para o componente filho)
+function handleSaveAsSuccess() {
+  if (pendingPublish.value) {
+    pendingPublish.value = false;
+    showPublish.value = true;     
+  } else {
+    toast.success('Projeto salvo com sucesso!');
+  }
 }
 
 // Abrir...
@@ -171,18 +235,31 @@ function openShare() {
 
 // Publicar
 function openPublish() {
-  // Projeto nunca salvo
-  if (!projects.currentProjectId.value) {
-    alert('Salve o projeto antes de publicar.');
-    return;
-  }
-
   showConfirmSaveBeforePublish.value = true;
 }
 
 async function confirmSaveAndPublish() {
+  // Cenário A: Projeto Novo (Nunca salvo)
+  if (!projects.currentProjectId.value) {
+    showConfirmSaveBeforePublish.value = false; 
+    
+    // MARCA A INTENÇÃO: "O usuário quer publicar depois de salvar"
+    pendingPublish.value = true; 
+    
+    saveAsMode.value = 'create';
+    showSaveAs.value = true;
+    
+    toast.info("Dê um nome ao projeto para continuar a publicação.");
+    return;
+  }
+
+  // Cenário B: Projeto Existente
   const saved = await projects.saveProject();
-  if (!saved) return;
+  
+  if (!saved) {
+    toast.error("Erro ao salvar o projeto. A publicação foi cancelada.");
+    return;
+  }
 
   showConfirmSaveBeforePublish.value = false;
   showPublish.value = true;
@@ -195,7 +272,6 @@ function openFromComputer() {
       // Rompe vínculo com projeto salvo (se houver)
       projects.currentProjectId.value = null;
       projects.currentProjectName.value = '';
-
       alert('Projeto carregado com sucesso!');
     },
     () => {
@@ -211,95 +287,54 @@ function saveToComputer() {
 </script>
 
 <style scoped>
-.filemenu {
+/* Apenas estilos do MENU aqui. Estilos de modal removidos. */
+.filemenu-container {
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: 1rem;
+  display: inline-block;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
-.menu-button {
-  background: #ececec;
-  padding: 6px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  user-select: none;
+.trigger-group { display: flex; align-items: center; gap: 8px; }
+
+.menu-trigger {
+  display: flex; align-items: center; gap: 6px;
+  background: transparent; border: 1px solid transparent;
+  padding: 6px 12px; border-radius: 6px; cursor: pointer;
+  color: #374151; font-weight: 500; font-size: 14px;
+  transition: all 0.2s ease;
 }
+.menu-trigger:hover, .menu-trigger.active { background-color: #f3f4f6; color: #111827; }
+.menu-trigger.active .chevron { transform: rotate(180deg); }
+.chevron { transition: transform 0.2s ease; opacity: 0.6; }
 
-.menu-button:hover {
-  background: #e0e0e0;
+.project-info {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: #6b7280; white-space: nowrap;
 }
+.separator-vertical { width: 1px; height: 16px; background-color: #e5e7eb; }
+.project-info .name { font-weight: 500; max-width: 150px; overflow: hidden; text-overflow: ellipsis; display: inline-block; }
 
-.project-name {
-  font-size: 14px;
-  opacity: 0.8;
+.dropdown-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; right: auto;
+  transform-origin: top left; min-width: 240px;
+  background: white; border: 1px solid #e5e7eb; border-radius: 8px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  padding: 6px; z-index: 9999;
 }
+.dropdown-menu.align-right { left: auto; right: 0; transform-origin: top right; }
 
-/* Dropdown */
-.dropdown {
-  position: absolute;
-  top: 36px;
-  left: 0;
-  background: white;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  width: 200px;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+.menu-group { display: flex; flex-direction: column; }
+.menu-label { font-size: 11px; text-transform: uppercase; color: #9ca3af; font-weight: 600; padding: 8px 10px 4px; letter-spacing: 0.05em; }
+.menu-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 14px; color: #4b5563; transition: background-color 0.15s; }
+.menu-item:hover { background-color: #f3f4f6; color: #1f2937; }
+.menu-item.danger { color: #dc2626; }
+.menu-item.danger:hover { background-color: #fef2f2; }
+.menu-item.highlight { color: #2563eb; font-weight: 500; }
+.menu-item.highlight:hover { background-color: #eff6ff; }
+.divider { height: 1px; background-color: #e5e7eb; margin: 6px 0; }
+.menu-item .icon { font-size: 16px; min-width: 20px; text-align: center; }
 
-  z-index: 9999; /* GARANTE que fica sempre por cima */
-}
-
-.dropdown.align-right {
-  left: auto;
-  right: 0;
-}
-
-.item {
-  padding: 10px;
-  cursor: pointer;
-}
-
-.item:hover {
-  background: #f0f0f0;
-}
-
-/* Placeholder dos modais (até criarmos os reais) */
-.placeholder-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0,0,0,0.3);
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  z-index: 10000;
-}
-
-.box {
-  background: white;
-  padding: 2rem;
-  border-radius: 12px;
-}
-
-.disabled {
-  opacity: 0.4;
-  pointer-events: none;
-}
-
-.error-msg {
-  color: red;
-  margin-top: 8px;
-  font-size: 13px;
-}
-
-.separator {
-  height: 1px;
-  background: #ddd;
-  margin: 6px 0;
-}
-
+/* Transitions */
+.fade-slide-enter-active, .fade-slide-leave-active { transition: opacity 0.2s, transform 0.2s; }
+.fade-slide-enter-from, .fade-slide-leave-to { opacity: 0; transform: translateY(-8px); }
 </style>

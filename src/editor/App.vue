@@ -19,6 +19,7 @@ import VariablesPanel from '@/editor/components/panels/VariablesPanel.vue';
 import PreviewPanel from '@/editor/components/panels/PreviewPanel.vue';
 import AuthMenu from '@/editor/components/layout/AuthMenu.vue';
 import FileMenu from '@/editor/components/layout/FileMenu.vue';
+import ToastContainer from '@/editor/components/layout/ToastContainer.vue';
 import clicLogo from '@/assets/logo-clic.svg'
 
 const assetStore = useAssetStore();
@@ -508,6 +509,9 @@ function startResize(event: MouseEvent) {
         </div>
       </aside>
     </div>
+
+    <ToastContainer />
+
   </div>
 </template>
 
