@@ -11,7 +11,7 @@
 
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import type { Block, BlockType } from '@/shared/types/chatbot';
-import { blocks, connections, variables, selectedBlockId, setProjectData } from '@/editor/utils/projectData';
+import { blocks, connections, variables, selectedBlockId, setProjectData, hasUnsavedChanges } from '@/editor/utils/projectData';
 import { useAssetStore } from '@/editor/utils/useAssetStore';
 import Canvas from '@/editor/components/canvas/Canvas.vue';
 import PropertiesPanel from '@/editor/components/panels/PropertiesPanel.vue';
@@ -38,12 +38,25 @@ const contextMenuBlockId = ref<string | null>(null);
 const hasCopiedBlock = ref(false);
 const propertiesPanelRef = ref<InstanceType<typeof PropertiesPanel> | null>(null);
 
-
 // Retorna o bloco atualmente selecionado
 const selectedBlock = computed(() => {
   if (!selectedBlockId.value) return null;
   return blocks.value.find(b => b.id === selectedBlockId.value) || null;
 });
+
+// Intercepta o fechamento da aba ou F5
+const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+  if (hasUnsavedChanges.value) {
+    // Cancela o evento (Padrão moderno)
+    e.preventDefault();
+    
+    // Define o valor de retorno (Exigido pelo Chrome/Chromium para mostrar o alerta)
+    // @ts-ignore: Propriedade depreciada, mas necessária para compatibilidade
+    e.returnValue = ''; 
+    
+    return '';
+  }
+};
 
 onMounted(async () => {
   // Verifica se há backup de login (JSON)
@@ -89,11 +102,14 @@ onMounted(async () => {
     blocks.value.unshift(startBlock); // coloca no começo
     selectedBlockId.value = startBlock.id;
   }
+
+  window.addEventListener('beforeunload', handleBeforeUnload);
 });
 
 // Remove listener ao desmontar
 onUnmounted(() => {
   document.removeEventListener('click', handleDocumentClick);
+  window.removeEventListener('beforeunload', handleBeforeUnload);
 });
 
 

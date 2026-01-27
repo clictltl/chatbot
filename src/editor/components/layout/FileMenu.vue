@@ -27,7 +27,7 @@
         
         <!-- Grupo: Novo -->
         <div class="menu-group">
-          <div class="menu-item" @click="handleMenuClick(newProject)">
+          <div class="menu-item" @click="handleMenuClick(() => withGuard(newProject))">
             <span class="icon">✨</span> Novo projeto
           </div>
         </div>
@@ -43,7 +43,7 @@
           <div class="menu-item" @click="handleMenuClick(openSaveAs)">
             <span class="icon">🔖</span> Salvar como...
           </div>
-          <div class="menu-item" @click="handleMenuClick(openList)">
+          <div class="menu-item" @click="handleMenuClick(() => withGuard(openList))">
             <span class="icon">📂</span> Abrir...
           </div>
           <div class="menu-item danger" @click="handleMenuClick(openDeleteModal)">
@@ -68,7 +68,7 @@
         <!-- Grupo: Local -->
         <div class="menu-group">
           <div class="menu-label">Local (PC)</div>
-          <div class="menu-item" @click="handleMenuClick(openFromComputer)">
+          <div class="menu-item" @click="handleMenuClick(() => withGuard(openFromComputer))">
             <span class="icon">📥</span> Importar Projeto
           </div>
           <div class="menu-item" @click="handleMenuClick(saveToComputer)">
@@ -80,12 +80,13 @@
     </transition>
 
     <!-- Modais -->
-    <SaveAsModal v-if="showSaveAs" :mode="saveAsMode" @close="showSaveAs = false" @success="handleSaveAsSuccess"/>
+    <SaveAsModal v-if="showSaveAs" :mode="saveAsMode" @close="handleSaveAsClose"  @success="handleSaveAsSuccess"/>
     <OpenProjectModal v-if="showOpen" @close="showOpen = false" />
     <DeleteProjectModal v-if="showDelete" @close="showDelete = false" @deleted="handleDeleted"/>
     <ShareModal v-if="showShare" @close="showShare = false"/>
     <ConfirmSaveBeforePublishModal v-if="showConfirmSaveBeforePublish" @close="showConfirmSaveBeforePublish = false" @confirm="confirmSaveAndPublish"/>
     <PublishModal v-if="showPublish" @close="showPublish = false"/>
+    <UnsavedChangesModal v-if="showUnsavedChanges" @cancel="handleUnsavedCancel" @discard="handleUnsavedDiscard" @save="handleUnsavedSave"/>
 
   </div>
 </template>
@@ -93,7 +94,7 @@
 <script setup lang="ts">
 import { ref, toRefs, computed, onMounted, onUnmounted } from 'vue';
 import { useProjects } from '@/editor/utils/useProjects';
-import { resetProjectData } from '@/editor/utils/projectData';
+import { resetProjectData, hasUnsavedChanges } from '@/editor/utils/projectData';
 import { useAuth } from '@/editor/auth';
 import { importFromComputer, exportToComputer } from '@/editor/utils/localProjectIO';
 import { useToast } from '@/editor/utils/useToast';
@@ -105,6 +106,7 @@ import DeleteProjectModal from '@/editor/components/modals/DeleteProjectModal.vu
 import ShareModal from '@/editor/components/modals/ShareModal.vue';
 import PublishModal from '@/editor/components/modals/PublishModal.vue';
 import ConfirmSaveBeforePublishModal from '@/editor/components/modals/ConfirmSaveBeforePublishModal.vue';
+import UnsavedChangesModal from '@/editor/components/modals/UnsavedChangesModal.vue';
 
 
 const projects = useProjects();
@@ -121,6 +123,10 @@ const showShare = ref(false);
 const showPublish = ref(false);
 const showConfirmSaveBeforePublish = ref(false);
 const pendingPublish = ref(false);
+
+// Estados para Unsaved Changes
+const showUnsavedChanges = ref(false);
+const pendingAction = ref<Function | null>(null);
 
 // Referência ao container principal para detectar cliques fora
 const fileMenuContainer = ref<HTMLElement | null>(null);
@@ -162,6 +168,61 @@ const handleClickOutside = (event: MouseEvent) => {
 onMounted(() => { document.addEventListener('click', handleClickOutside); });
 onUnmounted(() => { document.removeEventListener('click', handleClickOutside); });
 
+// --- Lógica de Proteção (Guard) ---
+
+function withGuard(action: Function) {
+  if (hasUnsavedChanges.value) {
+    pendingAction.value = action;
+    showUnsavedChanges.value = true;
+  } else {
+    action();
+  }
+}
+
+function handleUnsavedCancel() {
+  showUnsavedChanges.value = false;
+  pendingAction.value = null;
+}
+
+function handleUnsavedDiscard() {
+  showUnsavedChanges.value = false;
+  if (pendingAction.value) {
+    pendingAction.value(); // Executa a ação (ex: newProject) sem salvar
+  }
+  pendingAction.value = null;
+  // O resetProjectData ou loadProject chamados pela ação vão resetar a flag hasUnsavedChanges
+}
+
+async function handleUnsavedSave() {
+  showUnsavedChanges.value = false;
+  
+  // Cenário 1: Projeto nunca salvo
+  if (!projects.currentProjectId.value) {
+    // Configura o modal de Salvar Como
+    saveAsMode.value = 'create';
+    showSaveAs.value = true;
+    
+    // IMPORTANTE: Não limpamos pendingAction.value aqui!
+    // Ele fica guardado esperando o sucesso do modal.
+    return; 
+  } 
+
+  // Cenário 2: Projeto já existe (Salvamento direto)
+  const saved = await projects.saveProject();
+
+ if (saved) {
+    toast.success("Salvo com sucesso!");
+
+    // Se tinha algo pendente (ex: abrir novo projeto), executa agora
+    if (pendingAction.value) {
+      pendingAction.value();
+      pendingAction.value = null;
+    }
+  } else {
+    toast.error("Erro ao salvar.");
+  }
+}
+
 // Novo
 function newProject() {
   resetProjectData();
@@ -202,14 +263,32 @@ function openSaveAs() {
   showSaveAs.value = true;
 }
 
-// Sucesso do modal Salvar Como (Lógica de salvamento movida para o componente filho)
+// Sucesso do modal Salvar Como
 function handleSaveAsSuccess() {
+  // Feedback visual sempre
+  toast.success('Projeto salvo com sucesso!'); 
+  
+  // Prioridade 1: Havia uma ação pendente (vinda do Guard de "Não Salvo")?
+  // Ex: Usuário clicou em "Novo Projeto" -> "Salvar" -> "Digitou Nome" -> Sucesso
+  if (pendingAction.value) {
+    pendingAction.value(); // Executa (ex: newProject())
+    pendingAction.value = null; // Limpa
+    return;
+  }
+
+  // Prioridade 2: Havia uma publicação pendente?
   if (pendingPublish.value) {
     pendingPublish.value = false;
     showPublish.value = true;     
-  } else {
-    toast.success('Projeto salvo com sucesso!');
   }
+}
+
+function handleSaveAsClose() {
+  showSaveAs.value = false;
+  
+  // Se o usuário cancelou o "Salvar Como", cancelamos qualquer fluxo que dependia disso
+  pendingPublish.value = false; 
+  pendingAction.value = null; 
 }
 
 // Abrir...
@@ -272,10 +351,10 @@ function openFromComputer() {
       // Rompe vínculo com projeto salvo (se houver)
       projects.currentProjectId.value = null;
       projects.currentProjectName.value = '';
-      alert('Projeto carregado com sucesso!');
+      toast.success('Projeto carregado com sucesso!');
     },
     () => {
-      alert('Erro ao carregar o arquivo JSON. Verifique se o formato está correto.');
+      alert('Erro ao carregar o projeto.');
     }
   );
 }

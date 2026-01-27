@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import { getProjectData, setProjectData, assets } from './projectData';
+import { getProjectData, setProjectData, assets, markAsSaved } from './projectData';
 import { useAssetStore } from './useAssetStore';
 import type { ProjectData } from '@/shared/types/project';
 
@@ -208,6 +208,7 @@ async function saveProject(name?: string) {
     currentProjectId.value = data.id;
     currentProjectName.value = data.name;
 
+    markAsSaved(); 
     return data;
 
   } catch (err: any) {
