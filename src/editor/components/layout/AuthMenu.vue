@@ -143,7 +143,8 @@ function getUserInitials(name: string = '') {
 const ERROR_MESSAGES: Record<string, string> = {
   'MISSING_CREDENTIALS': 'Preencha usuário e senha.',
   'LOGIN_FAILED': 'Usuário ou senha incorretos.',
-  'TOO_MANY_ATTEMPTS': 'Muitas tentativas. Aguarde alguns minutos.'
+  'TOO_MANY_ATTEMPTS': 'Muitas tentativas. Aguarde alguns minutos.',
+  'LGPD_REQUIRED': 'Acesso bloqueado. Acesse clic.tltlab.org pelo navegador para aceitar os Termos de Uso.'
 }
 
 async function submitLogin() {
